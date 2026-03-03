@@ -244,7 +244,8 @@ CFileSize seek_beginning_of_archive(CFileInStream *archive_stream)
         archive_size = filestat.st_size;
     #endif
     is_found = false;
-    Byte b[signature_size];
+    Byte *b = (Byte *)malloc(signature_size);
+    if (!b) { free(signature); return 1; }
     #ifdef DEBUG
     printf("archive_size=%d", archive_size);
     #endif
@@ -265,11 +266,12 @@ CFileSize seek_beginning_of_archive(CFileInStream *archive_stream)
     if (! is_found){
         print_error("Could not find the beginning of the archive");
     }
+    free(b);
     free(signature);
     return (CFileSize)(i + strlen(pylauncher));
 }
 
-int unpack(char archive[512])
+int unpack(char *archive)
 {
     UInt32 i;
     CFileInStream archive_stream;

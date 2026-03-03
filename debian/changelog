@@ -1,3 +1,15 @@
+wubi (24.04.4r347) noble; urgency=low
+
+  [Ismaël Moret]
+
+  * Bump to 24.04.4 (noble)
+  * Switched from Python 2 to Python 3
+  * Rewrote the Makefile to use pip's edition of pypack & modulegraph
+  * Bump all subsidiary dependencies
+  * Added a requirements file for best practice & deployment facilitation
+  * Bump Python requirement to 3.13 ( 2 isn't officially supported nowadays, > 3.10 is best for now)
+  * Use WSL for Windows subdisiaries (enforced for now, will be reworked to support both Linux & Windows hosts). (I would recommend Cygwin for building from Makefile, and WSL provides Linux for Windows users)
+
 wubi (22.04.4r346) jammy; urgency=low
 
   [Hakuna Matata]

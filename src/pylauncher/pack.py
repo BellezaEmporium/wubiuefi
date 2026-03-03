@@ -39,7 +39,7 @@ def compress(target_dir):
 
     cmd = '%s a -t7z -m0=lzma -mx=9 -mfb=256 -md=32m -ms=on ../archive.7z *'
     cmd = cmd % (compressor,)
-    print cmd
+    print(cmd)
     os.chdir(target_dir)
     subprocess.call([compressor, "a", "-t7z", "-m0=lzma", "-mx=9", "-mfb=256",
                      "-md=32m", "-ms=on", "../archive.7z", "*"])
@@ -60,16 +60,21 @@ def make_self_extracting_exe(target_dir):
     target = ajoin(dirname(target_dir), 'application.exe')
     signature = ajoin(dirname(target_dir), 'signature')
     f = open(signature, 'wb')
-    f.write(SIGNATURE)
+    f.write(SIGNATURE.encode('utf-8'))
     f.close()
-    print "Creating self extracting file %s" % target
+    print("Creating self extracting file %s" % target)
     cat(target, header, signature, archive)
 
 def add_python_interpreter(target_dir):
-    #TBD detect the dll/lib of the current python instance
-    for f in ('pylauncher.exe', 'python27.dll', 'pyrun.exe'):
+    python_version = sys.version_info
+    dll_name = 'python%d%d.dll' % (python_version.major, python_version.minor)
+    
+    for f in ('pylauncher.exe', dll_name, 'pyrun.exe'):
         source = ajoin(dirname(__file__), f)
-        shutil.copy(source, target_dir)
+        if os.path.exists(source):
+            shutil.copy(source, target_dir)
+        else:
+            print("Warning: %s not found, skipping." % source)
 
 def main():
     target_dir = sys.argv[1]

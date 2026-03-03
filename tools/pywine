@@ -1,3 +1,2 @@
 #!/bin/sh
-root="$(cd ${0%/*}/../;pwd)"
-"$root/tools/wine" c:/python27/python.exe $@
+exec /cygdrive/c/Python313/python.exe "$@"

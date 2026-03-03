@@ -24,6 +24,7 @@
 #include "deletedir.h"
 #include "str.h"
 #include "windows.h"
+#include <direct.h>
 
 #define true 1
 #define false 0
@@ -35,7 +36,7 @@ int delete_directory(char* target_directory)
     char abs_path[MAX_PATH];
     int result;
     if (GetFullPathName(target_directory, MAX_PATH, abs_path, NULL)!=0){
-        chdir("\\");
+        _chdir("\\");
         result = _delete_directory(abs_path);
         return result;
     }

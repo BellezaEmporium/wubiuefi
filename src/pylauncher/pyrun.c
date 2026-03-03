@@ -36,6 +36,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <direct.h>
 #include "windows.h"
 #include "deletedir.h"
 #include "str.h"
@@ -54,7 +55,7 @@ main(int ac, char **av)
     char exefile[MAX_PATH];
     char originalexefile[MAX_PATH + 100];
     char targetdir[MAX_PATH];
-    const char dllfile[MAX_PATH] = "python27.dll";
+    char dllfile[MAX_PATH] = "python313.dll";
     const char pythonpath[MAX_PATH] = "lib";
     const char pythonhome[MAX_PATH] = ".";
     const char scriptfile[MAX_PATH] = "main.pyo";
@@ -72,7 +73,7 @@ main(int ac, char **av)
     strcpy(targetdir, av[1]);
     sprintf(originalexefile, "--exefile=\"%s\"", av[2]);
     //~ printf("pyrun targetdir=%s\n", targetdir);
-    chdir(targetdir);
+    _chdir(targetdir);
 
     //Load python dll file
     dll = LoadLibraryEx(dllfile, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);

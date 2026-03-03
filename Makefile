@@ -7,25 +7,29 @@ COPYRIGHTYEAR = 2009
 AUTHOR = Agostino Russo
 EMAIL = agostino.russo@gmail.com
 
+WSL = wsl -u root --
+WSLPATH = $(shell wsl -u root -- wslpath -u "$$(cmd.exe /c 'cd' 2>/dev/null | tr -d '\r')" 2>/dev/null || echo "/mnt/d/GH Repos/wubiuefi")
+PYTHON_DLL = /cygdrive/c/Python313/python313.dll
+
 all: build check
 
 build: wubi
 
 wubi: wubi-pre-build
-	PYTHONPATH=src tools/pywine -OO src/pypack/pypack --verbose --bytecompile --outputdir=build/wubi src/main.py data build/bin build/version.py build/winboot build/translations
+	PYTHONPATH=src tools/pywine -OO pypack --verbose --bytecompile --outputdir=build/wubi src/main.py data build/bin build/version.py build/winboot build/translations
 	PYTHONPATH=src tools/pywine -OO build/pylauncher/pack.py build/wubi
 	mv build/application.exe build/wubi.exe
 
 wubizip: wubi-pre-build
-	PYTHONPATH=src tools/pywine src/pypack/pypack --verbose --outputdir=build/wubi src/main.py data build/bin build/version.py build/winboot build/translations
-	cp wine/drive_c/Python27/python.exe build/wubi #TBD
+	PYTHONPATH=src tools/pywine pypack --verbose --outputdir=build/wubi src/main.py data build/bin build/version.py build/winboot build/translations
+	cp "$(PYTHON_DLL)" build/wubi
 	cd build; zip -r wubi.zip wubi
 
-wubi-pre-build: check_wine check_winboot pylauncher winboot2 src/main.py src/wubi/*.py cpuid version.py translations
+wubi-pre-build: check_winboot pylauncher winboot2 src/main.py src/wubi/*.py cpuid version.py translations
 	rm -rf build/wubi
 	rm -rf build/bin
 	cp -a blobs build/bin
-	cp wine/drive_c/Python27/python27.dll build/pylauncher #TBD
+	cp "$(PYTHON_DLL)" build/pylauncher
 	cp build/cpuid/cpuid.dll build/bin
 
 pot:
@@ -49,11 +53,13 @@ update-po: pot
 translations: po/*.po
 	mkdir -p build/translations/
 	@for po in $^; do \
-		language=`basename $$po`; \
+		language=$$(basename $$po); \
 		language=$${language%%.po}; \
 		target="build/translations/$$language/LC_MESSAGES"; \
 		mkdir -p $$target; \
-		msgfmt --output=$$target/$(PACKAGE).mo $$po; \
+		wsl -u root -- msgfmt \
+			--output="$(WSLPATH)/$$target/$(PACKAGE).mo" \
+			"$(WSLPATH)/$$po"; \
 	done
 
 version.py:
@@ -72,33 +78,23 @@ cpuid: src/cpuid/cpuid.c
 	cd build/cpuid; make
 
 winboot2:
-	mkdir -p build/winboot
+	mkdir -p build/winboot build/winboot/EFI build/grubutil
 	cp -f data/wubildr.cfg data/wubildr-bootstrap.cfg build/winboot/
-	/usr/lib/grub/i386-pc/grub-ntldr-img --grub2 --boot-file=wubildr -o build/winboot/wubildr.mbr
+	$(WSL) /usr/lib/grub/i386-pc/grub-ntldr-img --grub2 \
+		--boot-file=wubildr \
+		-o "$(WSLPATH)/build/winboot/wubildr.mbr"
 	cd build/winboot && tar cf wubildr.tar wubildr.cfg
-	mkdir -p build/grubutil
-	grub-mkimage -O i386-pc -c build/winboot/wubildr-bootstrap.cfg -m build/winboot/wubildr.tar -o build/grubutil/core.img \
-		loadenv biosdisk part_msdos part_gpt fat ntfs ext2 ntfscomp iso9660 loopback search linux boot minicmd cat cpuid chain halt help ls reboot \
-		echo test configfile gzio normal sleep memdisk tar font gfxterm gettext true vbe vga video_bochs video_cirrus probe
-	cat /usr/lib/grub/i386-pc/lnxboot.img build/grubutil/core.img > build/winboot/wubildr
-	mkdir -p build/winboot/EFI
-	grub-mkimage -O x86_64-efi -c build/winboot/wubildr-bootstrap.cfg -m build/winboot/wubildr.tar -o build/winboot/EFI/grubx64.efi \
-		loadenv part_msdos part_gpt fat ntfs ext2 ntfscomp iso9660 loopback search linux linuxefi boot minicmd cat cpuid chain halt help ls reboot \
-		echo test configfile gzio normal sleep memdisk tar font gfxterm gettext true efi_gop efi_uga video_bochs video_cirrus probe efifwsetup \
-		all_video gfxterm_background png gfxmenu
-	cp /usr/lib/shim/shim.efi.signed build/winboot/EFI/shimx64.efi 2>/dev/null || \
-		cp shim/shimx64.efi.signed build/winboot/EFI/shimx64.efi 2>/dev/null || \
-		cp /usr/lib/shim/shimx64.efi.signed build/winboot/EFI/shimx64.efi
-	cp /usr/lib/shim/MokManager.efi.signed build/winboot/EFI/MokManager.efi 2>/dev/null || \
-		cp shim/mmx64.efi build/winboot/EFI/mmx64.efi 2>/dev/null || \
-		cp /usr/lib/shim/mmx64.efi build/winboot/EFI/mmx64.efi
-	sbsign --key .key/*.key --cert .key/*.crt --output build/winboot/EFI/grubx64.efi build/winboot/EFI/grubx64.efi
-	grub-mkimage -O i386-efi -c build/winboot/wubildr-bootstrap.cfg -m build/winboot/wubildr.tar -o build/winboot/EFI/grubia32.efi \
-		loadenv part_msdos part_gpt fat ntfs ext2 ntfscomp iso9660 loopback search linux linuxefi boot minicmd cat cpuid chain halt help ls reboot \
-		echo test configfile gzio normal sleep memdisk tar font gfxterm gettext true efi_gop efi_uga video_bochs video_cirrus probe efifwsetup \
-		all_video gfxterm_background png gfxmenu
-	sbsign --key .key/*.key --cert .key/*.crt --output build/winboot/EFI/grubia32.efi build/winboot/EFI/grubia32.efi
-	cp .key/*.cer build/winboot/EFI/.
+	$(WSL) grub-mkimage -O i386-pc \
+		-c "$(WSLPATH)/build/winboot/wubildr-bootstrap.cfg" \
+		-m "$(WSLPATH)/build/winboot/wubildr.tar" \
+		-o "$(WSLPATH)/build/grubutil/core.img" \
+		loadenv biosdisk part_msdos part_gpt fat ntfs ext2 ntfscomp \
+		iso9660 loopback search linux boot minicmd cat cpuid chain \
+		halt help ls reboot echo test configfile gzio normal sleep \
+		memdisk tar font gfxterm gettext true vbe vga video_bochs video_cirrus probe
+	wsl -u root -- sh -c "cat /usr/lib/grub/i386-pc/lnxboot.img \
+		'/mnt/d/GH Repos/wubiuefi/build/grubutil/core.img' \
+		> '/mnt/d/GH Repos/wubiuefi/build/winboot/wubildr'"
 
 winboot: grub4dos grubutil
 	mkdir -p build/winboot
@@ -127,9 +123,6 @@ runbin: wubi
 	mkdir build/test
 	cd build/test; ../../tools/wine ../wubi.exe --test
 
-check_wine: tools/check_wine
-	tools/check_wine
-
 check_winboot: tools/check_winboot
 	tools/check_winboot
 
@@ -155,5 +148,5 @@ distclean: clean
 	rm -rf data/custom-installation/packages
 	rm -rf shim
 
-.PHONY: all build test wubi wubizip wubi-pre-build pot runpy runbin check_wine check_winboot unittest
+.PHONY: all build test wubi wubizip wubi-pre-build pot runpy runbin check_winboot unittest
 	7z translations version.py pylauncher winboot winboot2 grubutil grub4dos clean distclean

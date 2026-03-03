@@ -37,7 +37,7 @@ def main():
                          stdout=subprocess.PIPE,
                          close_fds=True)
 
-    contents = p.stdout.readlines()
+    contents = [line.decode('utf-8') for line in p.stdout.readlines()] if p.stdout is not None else []
 
     # Read in the exclusions file
     exclusions = {}
@@ -63,7 +63,7 @@ def main():
             # Allow specifying pattern matches of any file.
             test_line = re.sub(r'[^:]*:[^:]*', r'*:*', line, 1)
             if test_line not in exclusions:
-                print line
+                print(line)
                 error = True
     if error:
         sys.exit(1)

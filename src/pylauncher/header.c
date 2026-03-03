@@ -36,6 +36,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <direct.h>
 #include "windows.h"
 #include "unpack.h"
 #include "deletedir.h"
@@ -64,7 +65,7 @@ main(int ac, char **av)
     DeleteFile(targetdir);
     getcwd(currentdir, MAX_PATH);
     CreateDirectory(targetdir, NULL);
-    chdir(targetdir);
+    _chdir(targetdir);
 
     //Extract LZMA bundled archive
     if (unpack(exefile)) {
@@ -73,7 +74,7 @@ main(int ac, char **av)
     }
 
     //Copy pylauncher.exe
-    sprintf(pylauncher, "%s.exe", targetdir);
+    snprintf(pylauncher, sizeof(pylauncher), "%s.exe", targetdir);
     if (!CopyFile("pylauncher.exe", pylauncher, FALSE)){
         sprintf(message, "Cannot copy %s\n", pylauncher);
         goto error;
