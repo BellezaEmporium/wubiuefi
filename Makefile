@@ -16,20 +16,31 @@ all: build check
 build: wubi
 
 wubi: wubi-pre-build
-	PYTHONPATH=src tools/pywine -OO pypack --verbose --bytecompile --outputdir=build/wubi src/main.py data build/bin build/version.py build/winboot build/translations
-	PYTHONPATH=src tools/pywine -OO build/pylauncher/pack.py build/wubi
-	mv build/application.exe build/wubi.exe
+	rm -rf build/wubi
+	env PYTHONPATH="$(PWD)/src" pyinstaller --noconfirm \
+		--onefile \
+		--windowed \
+		--icon=data/images/Wubi.ico \
+		--add-data="data;data" \
+		--add-data="build/bin;bin" \
+		--add-data="build/version.py;." \
+		--add-data="build/winboot;winboot" \
+		--add-data="build/translations;translations" \
+		--collect-all wubi \
+		--name=$(PACKAGE) \
+		src/main.py
+	mv dist/$(PACKAGE).exe build/wubi.exe
+
 
 wubizip: wubi-pre-build
 	PYTHONPATH=src tools/pywine pypack --verbose --outputdir=build/wubi src/main.py data build/bin build/version.py build/winboot build/translations
 	cp "$(PYTHON_DLL)" build/wubi
 	cd build; zip -r wubi.zip wubi
 
-wubi-pre-build: check_winboot pylauncher winboot2 src/main.py src/wubi/*.py cpuid version.py translations
+wubi-pre-build: check_winboot winboot2 src/main.py src/wubi/*.py cpuid version.py translations
 	rm -rf build/wubi
 	rm -rf build/bin
 	cp -a blobs build/bin
-	cp "$(PYTHON_DLL)" build/pylauncher
 	cp build/cpuid/cpuid.dll build/bin
 
 pot:
@@ -66,12 +77,6 @@ version.py:
 	$(shell echo 'version = "$(VERSION)"' > build/version.py)
 	$(shell echo 'revision = $(REVISION)' >> build/version.py)
 	$(shell echo 'application_name = "$(PACKAGE)"' >> build/version.py)
-
-pylauncher: 7z src/pylauncher/*
-	cp -rf src/pylauncher build
-	cp "$(ICON)" build/pylauncher/application.ico
-	sed -i 's/application_name/$(PACKAGE)/' build/pylauncher/pylauncher.exe.manifest
-	cd build/pylauncher; make
 
 cpuid: src/cpuid/cpuid.c
 	cp -rf src/cpuid build
@@ -113,11 +118,6 @@ grubutil: src/grubutil/grubinst/*
 	cp -rf src/grubutil build
 	cd build/grubutil/grubinst; make
 
-# not compiling 7z at the moment, but source is used by pylauncher
-7z: src/7z/C/*.c
-	mkdir -p build/7z
-	cp -rf src/7z build
-
 runbin: wubi
 	rm -rf build/test
 	mkdir build/test
@@ -149,4 +149,4 @@ distclean: clean
 	rm -rf shim
 
 .PHONY: all build test wubi wubizip wubi-pre-build pot runpy runbin check_winboot unittest
-	7z translations version.py pylauncher winboot winboot2 grubutil grub4dos clean distclean
+	7z translations version.py winboot winboot2 grubutil grub4dos clean distclean

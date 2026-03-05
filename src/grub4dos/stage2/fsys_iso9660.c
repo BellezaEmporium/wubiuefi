@@ -119,7 +119,7 @@ iso9660_mount (void)
   for (sector = 16 ; sector < 32 ; sector++)
     {
       emu_iso_sector_size_2048 = 1;
-      if (! devread(sector, 0, sizeof(*PRIMDESC), (char *)PRIMDESC)) 
+      if (! devread(sector, 0, sizeof(*PRIMDESC), (char *)PRIMDESC, 0xedde0d90)) 
 	break;
       /* check ISO_VD_PRIMARY and ISO_STANDARD_ID */
       if (PRIMDESC->type.l == ISO_VD_PRIMARY
@@ -181,7 +181,7 @@ iso9660_dir (char *dirname)
       while (size > 0)
 	{
           emu_iso_sector_size_2048 = 1;
-	  if (! devread (extent, 0, ISO_SECTOR_SIZE, (char *)DIRREC))
+	  if (! devread (extent, 0, ISO_SECTOR_SIZE, (char *)DIRREC, 0xedde0d90))
 	    {
 	      errnum = ERR_FSYS_CORRUPT;
 	      return 0;
@@ -353,7 +353,7 @@ iso9660_dir (char *dirname)
 		      rr_ptr.ptr = (char *)(RRCONT_BUF + ce_ptr->u.ce.offset.l);
 		      rr_len = ce_ptr->u.ce.size.l;
 		      emu_iso_sector_size_2048 = 1;
-		      if (! devread(ce_ptr->u.ce.extent.l, 0, ISO_SECTOR_SIZE, (char *)(RRCONT_BUF)))
+		      if (! devread(ce_ptr->u.ce.extent.l, 0, ISO_SECTOR_SIZE, (char *)(RRCONT_BUF), 0xedde0d90))
 			{
 			  errnum = 0;	/* this is not fatal. */
 			  break;
@@ -443,7 +443,7 @@ iso9660_dir (char *dirname)
 }
 
 unsigned long
-iso9660_read (char *buf, unsigned long len)
+iso9660_read (char *buf, unsigned long len, unsigned long write)
 {
   unsigned long sector, blkoffset, size, ret;
 
@@ -461,16 +461,20 @@ iso9660_read (char *buf, unsigned long len)
       if (size > len)
       	  size = len;
 
+      emu_iso_sector_size_2048 = 1;
+
       disk_read_func = disk_read_hook;
 
-      emu_iso_sector_size_2048 = 1;
-      if (! devread (INODE->file_start + sector, blkoffset, size, buf))
-	  return 0;
+      blkoffset = devread (INODE->file_start + sector, blkoffset, size, buf, write);
 
       disk_read_func = NULL;
 
+      if (! blkoffset)
+	  return 0;
+
       len -= size;	/* len always >= 0 */
-      buf += size;
+      if (buf)
+	buf += size;
       ret += size;
       filepos += size;
       sector++;

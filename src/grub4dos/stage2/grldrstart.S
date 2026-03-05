@@ -280,36 +280,31 @@ _start1:
 #define FS_BOOT	0xd00		/* segment of partition boot track */
 
 	xorw	%cx, %cx
-	pushw	%cx		/* CX=0 */
+//	pushw	%cx		/* CX=0 */
 	movw	$0x0080, %dx
-//	pushw	%dx
-	movb	$8, %ah		/* read drive parameters changes DX,ES,DI,BX */
-	call	int13
-//	stc
-//	int	$0x13
-//	popw	%dx
-	popw	%ax		/* AX=0 */
+//	movb	$8, %ah		/* read drive parameters changes DX,ES,DI,BX */
+//	call	int13
+//	popw	%ax		/* AX=0 */
 
 	pushw	%ss		/* SS=0x9400 */
 	popw	%es		/* ES=0x9400 */
 
-	jc	1f
+//	jc	1f
 
-	andb	$63, %cl	/* AL=sectors per track, CF cleared */
+//	andb	$63, %cl	/* AL=sectors per track, CF cleared */
 
-	stc
-	jz	1f
+//	stc
+//	jz	1f
 
-	xchgw	%ax, %cx	/* this moves CL to AL, and CX=0 */
-	movb	$0x02, %ah
+//	xchgw	%ax, %cx	/* this moves CL to AL, and CX=0 */
+	movw	$(((pre_stage2_start - _start1) >> 9) + 0x200), %ax
+//	movb	$0x02, %ah
 	movw	%ax, %bp	/* save AX to BP: read 1 track */
 	xorw	%bx, %bx	/* ES already has a known value of 0x9400 */
 	incw	%cx
-//	pushw	%dx
 	call	int13
 //	stc
 //	int	$0x13		/* read master boot track to ES:0000 */
-//	popw	%dx
 	jc	1f
 	negb	%ah		/* set CF=1 if non-zero */
 1:
@@ -460,14 +455,16 @@ disk_serial_number_structure_end:
 	//stc
 	jz	helper_call_c
 	
-	/* use BP to calculate the sectors to read within 1 track */
-	subw	%bp, %ax
-	decw	%ax		/* decb	%al */
-	negb	%al		/* AL=sectors upto the end of the track */
+	///* use BP to calculate the sectors to read within 1 track */
+	////subw	%bp, %ax
+	//subb	$4, %al
+	//decw	%ax		/* decb	%al */
+	//negb	%al		/* AL=sectors upto the end of the track */
+	movb	$0x01, %al
 7:
 	movw	$3, %di		/* retry 3 times on read failure */
 2:
-	movb	$2, %ah
+	movb	$0x02, %ah
 	pushw	$FS_BOOT
 	popw	%es		/* ES=FS_BOOT */
 	xorw	%bx, %bx	/* read partition boot track to FS_BOOT:0000 */
@@ -543,19 +540,19 @@ add_sub_si:
 try_floppy:
 
 	movw	$0x31b2, %si	/* a value big enough */
-	movb	$8, %ah		/* read drive parameters changes DX,ES,DI,BX */
-	cwd			/* DL=0 for floppy */
-	pushw	%dx		/* DX=0 */
-//	int	$0x13
-	call	int13
-	popw	%ax		/* AX=0 */
-	jc	5f		/* floppy failure, issue "Error" and hang */
-	cwd			/* DX=0 */
-	xchgw	%ax, %cx	/* this moves CL to AL, and CX=0 */
-	andb	$63, %al	/* AL=sectors per track */
-	jz	5f		/* invalid value. floppy failure. hangs */
-	//movw	$1, %cx
-	incw	%cx
+	//movb	$8, %ah		/* read drive parameters changes DX,ES,DI,BX */
+	//cwd			/* DL=0 for floppy */
+	//pushw	%dx		/* DX=0 */
+	//call	int13
+	//popw	%ax		/* AX=0 */
+	//jc	5f		/* floppy failure, issue "Error" and hang */
+	//cwd			/* DX=0 */
+	//xchgw	%ax, %cx	/* this moves CL to AL, and CX=0 */
+	//andb	$63, %al	/* AL=sectors per track */
+	//jz	5f		/* invalid value. floppy failure. hangs */
+	movb	$4, %al
+	movw	$1, %cx
+	xorw	%dx, %dx
 	jmp	7b
 
 5:
@@ -773,11 +770,6 @@ cdrom_check:
 	popw	%es
 	movb	$0x13, (%si)
 	call	int13
-//	pushw	%ds
-//	pushw	%dx
-//	int	$0x13
-//	popw	%dx
-//	popw	%ds
 
 	/* ignore CF */
 #;	jc	2f	/* not in emulation mode */
@@ -1019,7 +1011,6 @@ load_cd_sector:
 	pushal
 	movb	$0x42, %ah
 	call	int13
-//	int	$0x13
 	popal
 //	popw	%es
 //	popw	%ds
@@ -5858,28 +5849,6 @@ helper_start:
 3:
 
 #if 0
-	pushw	%ds
-	pushw	%es
-	pushw	%bx
-	pushw	%dx
-	movb	$8, %ah		/* read drive parameters changes DX,ES,DI,BX */
-	movb	$0x80, %dl	/* BIOS drive number is in DL */
-	int	$0x13
-//	call	int13
-	xchgw	%ax, %dx	/*movw	%dx, %ax*/ //AH=max head number
-	popw	%dx
-	popw	%bx
-	popw	%es
-	popw	%ds
-	jc	3f
-	andb	$63, %cl
-	jz	3f
-	movb	%cl, %es:0x18(%bx)
-	shrw	$8, %ax		//AX=max head number
-	incw	%ax		//AX=total heads
-	movw	%ax, %es:0x1a(%bx)
-3:
-//#else
 	testb	%dl, %dl
 	jns	3f			/* floppy */
 	popw	%di			/* DI points to old entry in MBR */
@@ -7700,10 +7669,29 @@ real_geometry_tune:
 
 //////////////////////////////////////////////////////////////////////////////
 
-	/* get maximum sector number */
+	/* find Max sector by reading each sector on the first track. */
 
-	movw	$63, %cx	/* cylinder=0, sector=Max possible */
+	/* try the passed-in value first */
+	movw	%cs:(Sectors_passed_in - _start1), %cx	/* cylinder=0 */
+	call	check_sector_readable
+	jnc	1f
+	xorw	%cx, %cx
 1:
+	incw	%cx
+	call	check_sector_readable
+	jc	1f
+	cmpw	$63, %cx
+	jb	1b
+	jmp	2f
+1:
+	/* Max Sector = CX - 1 */
+	decw	%cx
+	cmpb	$2, %cl
+	jnb	2f
+	movb	$1, %ah		/* failure */
+	ret
+
+check_sector_readable:
 	movw	$0x5000, %ax
 	movw	%ax, %es
 	movw	%ax, %ds
@@ -7715,19 +7703,17 @@ real_geometry_tune:
 	movw	%bx, %di
 	int	$0x13
 	popaw
-	jnc	1f		/* found Max sector */
-	loop	1b
-2:
-	movb	$1, %ah		/* failure */
 	ret
-1:
 
+2:
 	/* CX=Max Sector */
 	movw	%cx, %cs:(Smax_tuned - _start1)
 
 //////////////////////////////////////////////////////////////////////////////
-
+#if 0
 	/* check if we can read sectors across the track boundary */
+
+	/* first, read a track plus one sector */
 
 	movb	$0, %cs:(cross_track - _start1)
 
@@ -7747,7 +7733,7 @@ real_geometry_tune:
 	popaw
 	jc	1f		/* cross-track read is not supported */
 
-	/* read again normally */
+	/* read again normally, only the track */
 
 	movb	%cs:(Smax_tuned - _start1), %al	/* sectors to read */
 	movb	$2, %ah		/* READ */
@@ -7783,10 +7769,10 @@ real_geometry_tune:
 	jne	1f		/* cross-track read is not supported */
 	movb	$1, %cs:(cross_track - _start1)
 1:
-
+#endif
 //////////////////////////////////////////////////////////////////////////////
-
-	/* get maximum head number */
+#if 0
+	/* find Max head by reading sector 1 on each track of cylinder 0. */
 
 	movb	$0xFF, %dh	/* head=Max possible */
 1:
@@ -7811,7 +7797,7 @@ real_geometry_tune:
 
 	/* DH=Max head */
 	movb	%dh, %cs:(Hmax_tuned - _start1)
-
+#endif
 //////////////////////////////////////////////////////////////////////////////
 
 	/* tune Hmax */
@@ -7831,9 +7817,11 @@ real_geometry_tune:
 	jb	2f		/* failure */
 	ja	4f		/* success */
 
+#if 0
 	cmpb	%cs:(Hmax_tuned - _start1), %dh
 	ja	2f		/* this should not happen */
 	je	5f
+#endif
 
 	incb	%dh		/* Next Hmax */
 	jnz	1b
@@ -7847,20 +7835,29 @@ real_geometry_tune:
 5:
 	/* Hmax is tuned ok. */
 
+	cmpb	$0xFF, %dh
+	jne	1f
+	/* consider Hmax=0xFF as a failure! Use the passed-in value. */
+	movb	%cs:(Heads_passed_in - _start1), %dh
+	testb	%dh, %dh
+	jnz	4f
+	decb	%dh
+4:
+	decb	%dh
+	movb	%dh, %cs:(Hmax_tuned - _start1)
+1:
 //////////////////////////////////////////////////////////////////////////////
 
 	/* tune Smax */
 
 	/* First, try the passed-in value */
 	movb	%cs:(Sectors_passed_in - _start1), %cl
-	
-	cmpb	$8, %cl
-	jb	1f
-
-	cmpb	$0, %cs:(cross_track - _start1)
-	jnz	4f
-	cmpb	%cs:(Smax_tuned - _start1), %cl
-	jnb	1f
+//	cmpb	$8, %cl
+//	jb	1f
+//	cmpb	$0, %cs:(cross_track - _start1)
+//	jnz	4f
+//	cmpb	%cs:(Smax_tuned - _start1), %cl
+//	jnb	1f
 4:
 	call	tune_sectors
 	jb	2f		/* failure */
@@ -7916,7 +7913,7 @@ tune_heads:
 
 	/* input:	DH = MaxHead + 1 */
 
-	movb	$0, %ch		/* cylinder: 0 - 3 */
+	movb	$0, %ch		/* cylinder: 0 - 4 */
 2:
 	/* read ending track of this cylinder */
 
@@ -7932,15 +7929,35 @@ tune_heads:
 	movw	%bx, %di
 	int	$0x13
 	popaw
-	jc	2f		/* failure */
+	//jc	2f		/* failure */
+	incb	%ch
+	jc	4f		/* considered OK */
+	decb	%ch
 
-	/* read beginning track of the next cylinder */
+	/* read beginning track of this cylinder */
+
+	movb	$1, %cl		/* sector 1=the leading sector */
+	movb	$2, %ah		/* READ */
+	movb	%cs:(Smax_tuned - _start1), %al	/* sectors to read */
+	movw	$0x5000, %bx
+	movw	%bx, %es
+	movw	%bx, %ds
+	xorw	%bx, %bx
+	pushaw
+	movw	%bx, %si
+	movw	%bx, %di
+	movb	$0, %dh
+	int	$0x13
+	popaw
+	jc	2f		/* failure */
 
 	incb	%ch		/* next cylinder */
 
-	pushw	%dx		/* save DH */
+	/* compare the two tracks */
+	call	cmp_track
+	je	4f		/* ok, try next cylinder */
 
-	movb	$0, %dh
+	/* read beginning track of the next cylinder */
 
 	movb	$1, %cl		/* sector 1=the leading sector */
 	movb	$2, %ah		/* READ */
@@ -7952,13 +7969,30 @@ tune_heads:
 	pushaw
 	movw	%bx, %si
 	movw	%bx, %di
+	movb	$0, %dh
 	int	$0x13
 	popaw
-	popw	%dx		/* restore DH */
 	jc	2f		/* failure */
 
 	/* compare the two tracks */
+	call	cmp_track
+	jne	3f		/* Next Hmax */
+4:
+	cmpb	$5, %ch		/* cylinder: 0 - 4 */
+	jb	2b		/* Next cylinder */
 
+	/* all passed, DH-1 is the final Hmax */
+	cmpb	$0, %dh
+	je	2f		/* failure */
+	ret			/* Flag: above */
+3:
+	cmpb	%dh, %dh	/* Flag: equal */
+	ret
+2:
+	stc			/* Flag: below */
+	ret
+
+cmp_track:
 	pushw	%cx
 	pushw	%si
 	pushw	%di
@@ -7975,20 +8009,6 @@ tune_heads:
 	popw	%di
 	popw	%si
 	popw	%cx
-	jne	3f		/* Next Hmax */
-
-	cmpb	$4, %ch
-	jb	2b		/* Next cylinder */
-
-	/* all passed, DH-1 is the final Hmax */
-	cmpb	$0, %dh
-	je	2f		/* failure */
-	ret			/* Flag: above */
-3:
-	cmpb	%dh, %dh	/* Flag: equal */
-	ret
-2:
-	stc			/* Flag: below */
 	ret
 
 //////////////////////////////////////////////////////////////////////////////
@@ -7997,9 +8017,9 @@ tune_sectors:
 
 	/* input:	CL = MaxSector */
 
-	movw	$10, %cs:(Smax_count - _start1)
+	movw	$16, %cs:(Smax_count - _start1)
 
-	movb	$0, %ch		/* cylinder: 0 - 7 */
+	movb	$0, %ch		/* cylinder: 0 - 6 */
 	movb	$0, %dh		/* head: 0 - Hmax */
 6:
 	/* read ending sector of this track. */
@@ -8014,11 +8034,20 @@ tune_sectors:
 	movw	%bx, %di
 	int	$0x13
 	popaw
-	jc	2f		/* failure */
+	//jc	2f		/* failure */
+	pushfw			/* save CF */
 
 	/* read beginning sector of the next track. */
 
+	cmpb	%cs:(Hmax_tuned - _start1), %dh
+	jb	3f		/* Next track */
+	movb	$0xFF, %dh	/* head 0 of ... */
+	incb	%ch		/* ... the next cylinder. */
+3:
 	incb	%dh		/* next track */
+
+	popfw			/* restore CF */
+	jc	4f		/* considered OK */
 
 	pushw	%cx		/* save CL */
 
@@ -8055,26 +8084,27 @@ tune_sectors:
 	popw	%si
 	popw	%cx
 	jne	3f		/* Next Smax */
-
+4:
 	decw	%cs:(Smax_count - _start1)
 	jz	6f
 
-	cmpb	%cs:(Hmax_tuned - _start1), %dh
-	jb	6b		/* Next track */
-
-	movb	$0, %dh
-	incb	%ch
-	cmpb	$7, %ch
-	jb	6b		/* Next track */
+	//cmpb	%cs:(Hmax_tuned - _start1), %dh
+	//jb	6b		/* Next track */
+	//movb	$0, %dh		/* head 0 of ... */
+	//incb	%ch		/* ... the next cylinder. */
+	cmpb	$7, %ch		/* any cylinder remains to check? */
+	jb	6b		/* yes, next track */
 6:
 	/* all passed, CL is the final Smax */
 	cmpb	$1, %cl
 	jbe	2f		/* failure */
 	ret			/* Flag: above */
 3:
+	/* not Maximum sector number */
 	cmpb	%cl, %cl	/* Flag: equal */
 	ret
 2:
+	/* I/O error, sector tune failed */
 	stc			/* Flag: below */
 	ret
 

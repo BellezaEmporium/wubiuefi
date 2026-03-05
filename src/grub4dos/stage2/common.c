@@ -32,8 +32,10 @@
  */
 
 struct multiboot_info mbi;
+#ifdef GRUB_UTIL
 unsigned long saved_drive;
 unsigned long saved_partition;
+#endif
 char saved_dir[256];
 //unsigned long cdrom_drives[8] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 unsigned long cdrom_drive = GRUB_INVALID_DRIVE;
@@ -41,7 +43,9 @@ unsigned long force_cdrom_as_boot_device = 1;
 unsigned long ram_drive;
 unsigned long rd_base = 0;	/* Note the rd_base value of -1 invalidates the ram drive. */
 unsigned long rd_size = 0;	/* The rd_size 0 stands for 4GB, not for length of 0. */
+#ifdef GRUB_UTIL
 unsigned long saved_mem_upper;
+#endif
 unsigned long saved_mem_lower;
 unsigned long saved_mmap_addr;
 unsigned long saved_mmap_length;
@@ -136,6 +140,9 @@ char *err_list[] =
   [ERR_DEFAULT_FILE] = "Invalid DEFAULT file format. Please copy a valid DEFAULT file from the grub4dos release and try again. Also note that the DEFAULT file must be uncompressed.",
   [ERR_PARTITION_TABLE_FULL] = "Cannot use --in-situ because the partition table is full(i.e., all the 4 entries are in use).",
   [ERR_MD5_FORMAT] = "Unrecognized md5 string. You must create it using the MD5CRYPT command.",
+  [ERR_WRITE_GZIP_FILE] = "Attempt to write a gzip file",
+  [ERR_FUNC_CALL] = "Invalid function call",
+//  [ERR_WRITE_TO_NON_MEM_DRIVE] = "Only RAM drives can be written when running in a script",
 
 };
 
@@ -335,9 +342,21 @@ init_bios_info (void)
       else
 	extended_memory = memtmp;
       
+      saved_mem_upper = memtmp;
+
       if (!cont || (memtmp == 0x3c00))
-	memtmp += (cont >> 10);
-      else
+	{
+	  saved_mem_upper += (cont >> 10);
+
+//	  /* XXX should I do this at all ??? */
+//
+//	  saved_mmap_addr = (unsigned long) fakemap;
+//	  saved_mmap_length = sizeof (struct AddrRangeDesc) * 2;
+//	  fakemap[0].Length = (saved_mem_lower << 10);
+//	  fakemap[1].Length = (saved_mem_upper << 10);
+//	  fakemap[2].Length = 0;
+	}
+      //else
 	{
 	  /* XXX should I do this at all ??? */
 
@@ -347,8 +366,6 @@ init_bios_info (void)
 	  fakemap[1].Length = (memtmp << 10);
 	  fakemap[2].Length = cont;
 	}
-
-      saved_mem_upper = memtmp;
     }
 
   printf("\r                        \r");	/* wipe out the messages */
@@ -362,6 +379,7 @@ init_bios_info (void)
   is64bit = check_64bit ();
 #endif
 
+#if 1
   /* Get the drive info.  */
   /* FIXME: This should be postponed until a Multiboot kernel actually
      requires it, because this could slow down the start-up
@@ -416,6 +434,7 @@ init_bios_info (void)
   init_free_mem_start = addr;
 
   DEBUG_SLEEP
+#endif
 
   /*
    *  Initialize other Multiboot Info flags.
@@ -429,6 +448,7 @@ init_bios_info (void)
 
 #ifndef GRUB_UTIL
 #ifndef STAGE1_5
+#ifdef FSYS_PXE
     force_pxe_as_boot_device = 0;
     if (! ((*(char *)0x8205) & 0x01))	/* if it is not disable pxe */
     {
@@ -501,7 +521,8 @@ pxe_init_fail:
 	}
     }
 pxe_init_done:
-#endif /* STAGE1_5 */
+#endif /* FSYS_PXE */
+#endif /* ! STAGE1_5 */
 #endif /* ! GRUB_UTIL */
 
 #if !defined(STAGE1_5) && !defined(GRUB_UTIL)

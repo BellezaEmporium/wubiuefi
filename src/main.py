@@ -29,6 +29,12 @@ root_dir = os.path.abspath(os.path.dirname(__file__))
 lib_dir = os.path.join(root_dir, 'lib')
 sys.path.insert(0, lib_dir)
 
+def get_base_path():
+    if getattr(sys, 'frozen', False):
+        return getattr(sys, '_MEIPASS')
+    return os.path.dirname(os.path.abspath(__file__))
+
+
 from wubi.application import Wubi
 
 try:

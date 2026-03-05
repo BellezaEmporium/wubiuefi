@@ -749,7 +749,7 @@ console_setcolorstate (color_state state)
 }
 
 void
-console_setcolor (int normal_color, int highlight_color)
+console_setcolor (int normal_color, int highlight_color, int helptext_color, int heading_color)
 {
   /* Nothing to do.  */
 }
@@ -1272,9 +1272,9 @@ hercules_setcolorstate (color_state state)
 }
 
 void
-hercules_setcolor (int normal_color, int highlight_color)
+hercules_setcolor (int normal_color, int highlight_color, int helptext_color, int heading_color)
 {
-  console_setcolor (normal_color, highlight_color);
+  console_setcolor (normal_color, highlight_color, helptext_color, heading_color);
 }
 
 int

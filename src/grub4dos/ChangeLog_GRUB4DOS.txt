@@ -1,3 +1,37 @@
+2009-03-31(r66) 0.4.4 official release.
+2009-03-28 removed the problematic global variable "i"; reduced one open-file step for configfile on cdrom.
+2009-03-27 fixed memory overlap issue on "map --rehook".
+2009-03-25 disabled the search for DEFAULT file on cdrom(in cmain, stage2.c).
+2009-03-24 fixed problem of WRITE/DD on modifying internal variables. added dd options for user-defined buffer.
+2009-03-21 bug fix: turned errorcheck on in run_script and enter_cmdline.
+2009-03-20(r65) fixed `configfile not working in menu init command group'.
+2009-03-19 trying to fix problem of `configfile running slowly'.
+2009-03-18 fixed problem of `geometry-tune too slow' on vmware.
+2009-03-17 fixed endless loop problem while running "configfile (md)4+8".
+2009-03-15 added new option --sync for geometry command.
+2009-03-14 added new option --tune for geometry command.
+2009-03-12 rearranged preset-menu items.
+2009-03-11 changed geometry-tune code(aim to solve problem on vmware).
+2009-03-07 fixed a bug(in grldrstart.S) brought in since 2009-02-05.
+2009-03-03 fixed memory overflow issue with (rd). canceled restrictions on some disk write commands.
+2009-02-26 fixed geometry-tune issue(reportedly with Virtual PC).
+2009-02-21 changes made according to Simon's hiddenmenu patches.
+2009-02-20 documented the command line needed for chainloading stage2 of grub legacy.
+2009-02-19 now a range of drives can be unmapped.
+2009-02-18 possibility to run another menu.lst after gfxmenu.
+2009-02-17 fix graphics display issue generated last time.
+2009-02-15 improved color command to set color for help text and heading line.
+2009-02-13 fix problems booting Linux when there are mappings.
+2009-02-11 added ext4 support(in fsys_ext2fs.c).
+2009-02-09 isolinux.bin(version 3.73) gets chainloaded again.
+2009-02-08 Move some variables to a known address. The read command returns value at addess.
+2009-02-03 New initrd syntax loading multiple cpio files for Linux 2.6 kernels.
+2009-01-30 Supported per-menu-item help text.
+2009-01-28 Fixed printf issue. Allowed non-block files to be written with dd and write.
+2009-01-24 New syntax of WRITE support writing string to file.
+2009-01-16(r64) Added gfxmenu support
+2009-01-09 New commands dd and uuid. fixed a bug in disk emulation.
+2008-12-30 Work around for BIOSes lacking INT15/E820 support.
 2008-12-29(r63) Now the preset menu holds the highest priority. MSYS/MinGW support.
 2008-12-24 Added "detect" sub-command for the "pxe" command.
 2008-12-21 Fixed several bootlace bugs when running under DOS.

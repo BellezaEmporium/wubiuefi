@@ -28,7 +28,7 @@
 #ifdef GRUB_UTIL
 
 int pxe_mount (void) { return 0; }
-unsigned long pxe_read (char *buf, unsigned long len) { return -1; }
+unsigned long pxe_read (char *buf, unsigned long len, unsigned long write) { return -1; }
 int pxe_dir (char *dirname) { return 0; }
 void pxe_close (void) {}
 
@@ -54,7 +54,7 @@ unsigned long pxe_entry = 0, pxe_blksize = 512 /*PXE_MAX_BLKSIZE*/;
 unsigned short pxe_basemem, pxe_freemem;
 unsigned long pxe_keep;
 
-IP4 pxe_yip, pxe_sip, pxe_gip;
+//IP4 pxe_yip, pxe_sip, pxe_gip;
 UINT8 pxe_mac_len, pxe_mac_type;
 MAC_ADDR pxe_mac;
 static UINT8 pxe_tftp_opened;
@@ -98,7 +98,7 @@ static int try_blksize (int tmp)
 	{
 	    if (filemax <= pxe_blksize)
 	    {
-		grub_printf ("\nFailure: Size %d too small.\n", filemax);
+		grub_printf ("\nFailure: Size %d too small.\n", (unsigned long)filemax);
 	        pxe_close ();
 		return 1;
 	    }
@@ -122,7 +122,6 @@ static int try_blksize (int tmp)
 }
 
 unsigned long pxe_inited = 0;	/* pxe_detect only run once */
-unsigned long pxe_restart_config = 0;
 BOOTPLAYER *discover_reply = 0;
 
 int pxe_detect (int blksize, char *config)	//void pxe_detect (void)
@@ -189,6 +188,9 @@ int pxe_detect (int blksize, char *config)	//void pxe_detect (void)
 	}
 	return 1;
   }
+
+  grub_memcpy ((char *) saved_pxe_mac, (char *) pxe_mac, 6);
+  saved_pxe_ip = pxe_yip;
 
   grub_strcpy (pxe_tftp_name, "/menu.lst/");
 
@@ -268,9 +270,19 @@ done:
 	boot_part_addr = 0;
 	current_slice = 0;
 
-	/* Restart pre_stage2.  */
-	(*(char *)0x8205) |= 2;	/* disable keyboard intervention */
-	chain_stage1(0, 0x8200, boot_part_addr);
+	///* Restart pre_stage2.  */
+	//(*(char *)0x8205) |= 2;	/* disable keyboard intervention */
+	//chain_stage1(0, 0x8200, boot_part_addr);
+	/* Restart cmain.  */
+	asm volatile ("movl $0x7000, %esp");	/* set stack to STACKOFF */
+#ifdef HAVE_ASM_USCORE
+	asm volatile ("call _cmain");
+	asm volatile ("jmp _stop");
+#else
+	asm volatile ("call cmain");
+	asm volatile ("jmp stop");
+#endif
+
 	/* Never reach here.  */
 #else
       unsigned long nr;
@@ -344,7 +356,10 @@ static int pxe_open (char* name)
 
   filemax = tftp_get_fsize->FileSize;
 
-  pxe_tftp_open.TFTPPort = htons (TFTP_PORT);
+  /* we have to replace pxe_tftp_open.TFTPPort with tftp_get_fsize->FileSize
+   * to avoid compiler optimization issue.  */
+  //pxe_tftp_open.TFTPPort = htons (TFTP_PORT);
+  tftp_get_fsize->FileSize = htons (TFTP_PORT);
   pxe_tftp_open.PacketSize = pxe_blksize;
 
   return pxe_reopen ();
@@ -521,9 +536,12 @@ int pxe_mount (void)
 }
 
 /* Read up to SIZE bytes, returned in ADDR.  */
-unsigned long pxe_read (char *buf, unsigned long len)
+unsigned long pxe_read (char *buf, unsigned long len, unsigned long write)
 {
   unsigned long nr;
+
+  if (write == 0x900ddeed)
+    return !(errnum = ERR_WRITE);
 
   if (! pxe_tftp_opened)
     return PXE_ERR_LEN;

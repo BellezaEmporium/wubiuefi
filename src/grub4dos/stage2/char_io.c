@@ -35,7 +35,7 @@ struct term_entry term_table[] =
     {
       "console",
       0,
-      24,
+      25,
       console_putchar,
       console_checkkey,
       console_getkey,
@@ -53,7 +53,7 @@ struct term_entry term_table[] =
       "serial",
       /* A serial device must be initialized.  */
       TERM_NEED_INIT,
-      24,
+      25,
       serial_putchar,
       serial_checkkey,
       serial_getkey,
@@ -71,7 +71,7 @@ struct term_entry term_table[] =
     {
       "hercules",
       0,
-      24,
+      25,
       hercules_putchar,
       console_checkkey,
       console_getkey,
@@ -109,7 +109,7 @@ struct term_entry term_table[] =
 /* This must be console.  */
 struct term_entry *current_term = term_table;
 
-int max_lines = 24;
+int max_lines = 25;
 int count_lines = -1;
 int use_pager = 1;
 #endif
@@ -177,7 +177,7 @@ grub_putstr (const char *str)
     grub_putchar (*str++);
 }
 
-#if 1
+#if 0
 void
 grub_printf (const char *format,...)
 {
@@ -281,12 +281,46 @@ find_specifier:
     }
 }
 #else
-int
-grub_printf (const char *format,...)
-{
-	/* sorry! this does not work :-( */
-	return grub_sprintf (NULL, format,...);
-}
+/* (Patch from Jamey Sharp, 26 Jan 2009)
+ * Replace grub_printf calls with grub_sprintf by #define, not asm magic.
+ * define in shared.h:
+ * 	#define grub_printf(...) grub_sprintf(NULL, __VA_ARGS__)
+ */
+//static int grub_printf_return_address;
+//void
+//grub_printf (const char *format, ...)
+//{
+//	/* sorry! this does not work :-( */
+//	//return grub_sprintf (NULL, format,...);
+//#if 1
+//  asm volatile ("popl %ebp");	/* restore EBP */
+//  //asm volatile ("ret");
+//  asm volatile ("popl %0" : "=m"(grub_printf_return_address));
+//  asm volatile ("pushl $0");	/* buffer = 0 for grub_sprintf */
+//#ifdef HAVE_ASM_USCORE
+//  asm volatile ("call _grub_sprintf");
+//#else
+//  asm volatile ("call grub_sprintf");
+//#endif
+//  asm volatile ("popl %eax");
+//  asm volatile ("pushl %0" : : "m"(grub_printf_return_address));
+//  asm volatile ("ret");
+//#else
+//  int *dataptr = (int *)(void *) &format;
+//
+//  dataptr--;	/* (*dataptr) is return address */
+//  grub_printf_return_address = (*dataptr);	/* save return address */
+//
+//  asm volatile ("leave");	/* restore ESP and EBP */
+//  //asm volatile ("ret");
+//  asm volatile ("popl %eax");	/* discard return address */
+//  asm volatile ("pushl $0");	/* buffer = 0 for grub_sprintf */
+//  asm volatile ("call grub_sprintf");
+//  asm volatile ("popl %eax");
+//  asm volatile ("pushl %0" : : "m"(grub_printf_return_address));
+//  asm volatile ("ret");
+//#endif
+//}
 #endif
 
 int
@@ -300,6 +334,8 @@ grub_sprintf (char *buffer, const char *format, ...)
   int *dataptr = (int *)(void *) &format;
   char c, *ptr, str[16];
   char *bp = buffer;
+  char pad;
+  int width;
 
   dataptr++;
 
@@ -316,11 +352,28 @@ grub_sprintf (char *buffer, const char *format, ...)
 	}
       }
       else
-	switch (c = *(format++))
+      {
+	pad = ' ';
+	width = 0;
+	c = *(format++);
+
+find_specifier:
+	switch (c)
 	  {
 	  case 'd': case 'x':	case 'X':  case 'u':
 	    *convert_to_ascii (str, c, *((unsigned long *) dataptr++)) = 0;
-
+	    width -= grub_strlen (str);
+	    if (width > 0)
+	      {
+		while(width--)
+		    if (buffer)
+			*bp++ = pad; /* putchar(pad); */
+		    else
+		    {
+			grub_putchar (pad);
+			bp++;
+		    }
+	      }
 	    ptr = str;
 	    if (buffer)
 	    {
@@ -336,6 +389,17 @@ grub_sprintf (char *buffer, const char *format, ...)
 	    break;
 
 	  case 'c':
+	    if (width > 0)
+	      {
+		while(--width)
+		    if (buffer)
+			*bp++ = pad; /* putchar(pad); */
+		    else
+		    {
+			grub_putchar (pad);
+			bp++;
+		    }
+	      }
 	    if (buffer)
 	    {
 		*bp++ = (*(dataptr++)) & 0xff;
@@ -346,8 +410,19 @@ grub_sprintf (char *buffer, const char *format, ...)
 	    break;
 
 	  case 's':
+	    width -= grub_strlen ((char *) *(dataptr));
+	    if (width > 0)
+	      {
+		while(width--)
+		    if (buffer)
+			*bp++ = pad; /* putchar(pad); */
+		    else
+		    {
+			grub_putchar (pad);
+			bp++;
+		    }
+	      }
 	    ptr = (char *) (*(dataptr++));
-
 	    if (buffer)
 	    {
 		while ((c = *(ptr++)) != 0)
@@ -360,7 +435,15 @@ grub_sprintf (char *buffer, const char *format, ...)
 		}
 	    }
 	    break;
+	  case '0':
+	    pad = '0';
+	  case '1' ... '9':
+	    width = c - '0';
+	    while ((c = *(format++)) >= '0' && c <= '9')
+		width = width * 10 + c - '0';
+	    goto find_specifier;
 	  }
+       }
     }
 
   if (buffer)
@@ -377,10 +460,26 @@ grub_sprintf (char *buffer, const char *format, ...)
 void
 init_page (void)
 {
+  int i;
+  char tmp_buf[128];
+  char ch = ' ';
+
   cls ();
 
-  grub_printf ("GRUB4DOS " GRUB4DOS_VERSION /* ", GNU GRUB %s" */ ", Memory: %dK / %dM, MenuEnd: 0x%X\n",
-	  /* version_string, */ saved_mem_lower, saved_mem_upper / 1024, ((char *) init_free_mem_start) + 256 * sizeof (char *) + config_len/*get_code_end()*/);
+  if (current_term->setcolorstate)
+      current_term->setcolorstate (COLOR_STATE_HEADING);
+
+  grub_sprintf (tmp_buf, " GRUB4DOS " GRUB4DOS_VERSION ", Memory: %dK / %dM, MenuEnd: 0x%X",
+		saved_mem_lower, saved_mem_upper / 1024, ((char *) init_free_mem_start) + 256 * sizeof (char *) + config_len);
+  for (i = 0; i < 79; i++)
+  {
+	if (ch)
+		ch = tmp_buf[i];
+	grub_putchar (ch ? ch : ' ');
+  }
+
+  if (current_term->setcolorstate)
+      current_term->setcolorstate (COLOR_STATE_STANDARD);
 }
 
 #else
@@ -404,22 +503,45 @@ static int num_history = 0;
 static char *
 get_history (int no)
 {
+  int j;
+  char *p = (char *) HISTORY_BUF;
   if (no < 0 || no >= num_history)
-    return 0;
+	return 0;
+  /* get history NO */
+  for (j = 0; j < no; j++)
+  {
+	p += *(unsigned short *)p;
+	if (p > (char *) HISTORY_BUF + MAX_CMDLINE * HISTORY_SIZE)
+	{
+		num_history = j;
+		return 0;
+	}
+  }
 
-  return (char *) HISTORY_BUF + MAX_CMDLINE * no;
+  return p + 2;
 }
 
 /* Add CMDLINE to the history buffer.  */
 static void
 add_history (const char *cmdline, int no)
 {
-  grub_memmove ((char *) HISTORY_BUF + MAX_CMDLINE * (no + 1),
-		(char *) HISTORY_BUF + MAX_CMDLINE * no,
-		MAX_CMDLINE * (num_history - no));
-  grub_strcpy ((char *) HISTORY_BUF + MAX_CMDLINE * no, cmdline);
-  if (num_history < HISTORY_SIZE)
-    num_history++;
+  int j, len;
+  char *p = (char *) HISTORY_BUF;
+  /* get history NO */
+  for (j = 0; j < no; j++)
+  {
+	p += *(unsigned short *)p;
+	if (p > (char *) HISTORY_BUF + MAX_CMDLINE * HISTORY_SIZE)
+		return;
+  }
+  /* get cmdline length */
+  len = grub_strlen (cmdline) + 3;
+  if (((char *) HISTORY_BUF + MAX_CMDLINE * HISTORY_SIZE) > (p + len))
+	grub_memmove (p + len, p, ((char *) HISTORY_BUF + MAX_CMDLINE * HISTORY_SIZE) - (p + len));
+  *(unsigned short *)p = len;
+  grub_strcpy (p + 2, cmdline);
+  if (num_history < 0x7FFFFFFF)
+	num_history++;
 }
 
 /* XXX: These should be defined in shared.h, but I leave these here,
@@ -749,7 +871,7 @@ real_get_cmdline (char *cmdline)
 		/* Find the position of the first character in this word.  */
 		for (i = lpos; i > 0; i--)
 		{
-		    if (buf[i - 1] == ' ')
+		    if (buf[i - 1] == ' ' || buf[i - 1] == '=')
 		    {
 			/* find backslashes immediately before the space */
 			for (ret = i - 2; ret >= 0; ret--)
@@ -1244,14 +1366,14 @@ grub_putchar (int c)
 //		  }
 //		}
 //		while (tmp != '\n' && tmp != '\r');
+	      
+		if (current_term->setcolorstate)
+		  current_term->setcolorstate (COLOR_STATE_STANDARD);
 
 		//grub_printf ("\r                                          \r");	/* recursive, bad!! */
 		c = (int)"\r                                          \r";
 		while (*(char *)c)
 		  current_term->putchar (*(char *)c++);
-	      
-		if (current_term->setcolorstate)
-		  current_term->setcolorstate (COLOR_STATE_NORMAL);
 	      }
 	      
 	      /* Restart to count lines.  */
@@ -1333,7 +1455,6 @@ substring (const char *s1, const char *s2, int case_insensitive)
     }
 }
 
-#ifndef STAGE1_5
 /* Terminate the string STR with NUL.  */
 int
 nul_terminate (char *str)
@@ -1359,6 +1480,7 @@ nul_terminate (char *str)
   return ch;
 }
 
+#ifndef STAGE1_5
 char *
 grub_strstr (const char *s1, const char *s2)
 {
@@ -1446,8 +1568,8 @@ memcheck (unsigned long addr, unsigned long len)
   if (! addr /* (addr < (unsigned long)(RAW_ADDR (0x1000))) */
       /* || (addr < (unsigned long)(RAW_ADDR (0x100000))
 	  && (unsigned long)(RAW_ADDR (saved_mem_lower * 1024)) < (addr + len)) */
-      || (addr >= (unsigned long)(RAW_ADDR (0x100000))
-	  && (unsigned long)(RAW_ADDR (saved_mem_upper * 1024)) < ((addr - 0x100000) + len)))
+      /*|| (addr >= (unsigned long)(RAW_ADDR (0x100000))
+	  && (unsigned long)(RAW_ADDR (saved_mem_upper * 1024)) < ((addr - 0x100000) + len))*/)
     errnum = ERR_WONT_FIT;
 
   return ! errnum;

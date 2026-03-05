@@ -69,6 +69,8 @@ static int no_scroll = 0;
 static int graphics_standard_color = A_NORMAL;
 static int graphics_normal_color = A_NORMAL;
 static int graphics_highlight_color = A_REVERSE;
+static int graphics_helptext_color = A_NORMAL;
+static int graphics_heading_color = A_NORMAL;
 static int graphics_current_color = A_NORMAL;
 static color_state graphics_color_state = COLOR_STATE_STANDARD;
 
@@ -157,22 +159,26 @@ graphics_putchar (int ch)
 {
     ch &= 0xff;
 
-    graphics_cursor(0);
+    //graphics_cursor(0);
 
     if (ch == '\n') {
         if (fonty + 1 < y1)
-            graphics_setxy(fontx, fonty + 1);
+            graphics_gotoxy(fontx, fonty + 1);
         else
+	{
+	    graphics_cursor(0);
             graphics_scroll();
-        graphics_cursor(1);
+	    graphics_cursor(1);
+	}
+        //graphics_cursor(1);
         return;
     } else if (ch == '\r') {
-        graphics_setxy(x0, fonty);
-        graphics_cursor(1);
+        graphics_gotoxy(x0, fonty);
+        //graphics_cursor(1);
         return;
     }
 
-    graphics_cursor(0);
+    //graphics_cursor(0);
 
     text[fonty * 80 + fontx] = ch;
     text[fonty * 80 + fontx] &= 0x00ff;
@@ -181,12 +187,15 @@ graphics_putchar (int ch)
 
     graphics_cursor(0);
 
-    if ((fontx + 1) >= x1) {
-        graphics_setxy(x0, fonty);
+    if ((fontx + 1) >= x1)
+    {
         if (fonty + 1 < y1)
             graphics_setxy(x0, fonty + 1);
         else
+	{
+            graphics_setxy(x0, fonty);
             graphics_scroll();
+	}
     } else {
         graphics_setxy(fontx + 1, fonty);
     }
@@ -266,6 +275,12 @@ graphics_setcolorstate (color_state state)
 	case COLOR_STATE_HIGHLIGHT:
 		graphics_current_color = graphics_highlight_color;
 		break;
+	case COLOR_STATE_HELPTEXT:
+		graphics_current_color = graphics_helptext_color;
+		break;
+	case COLOR_STATE_HEADING:
+		graphics_current_color = graphics_heading_color;
+		break;
 	default:
 		graphics_current_color = graphics_standard_color;
 		break;
@@ -275,10 +290,12 @@ graphics_setcolorstate (color_state state)
 }
 
 void
-graphics_setcolor (int normal_color, int highlight_color)
+graphics_setcolor (int normal_color, int highlight_color, int helptext_color, int heading_color)
 {
     graphics_normal_color = normal_color;
     graphics_highlight_color = highlight_color;
+    graphics_helptext_color = helptext_color;
+    graphics_heading_color = heading_color;
 
     graphics_setcolorstate (graphics_color_state);
 }
@@ -323,43 +340,43 @@ read_image (char *s)
     }
 
     /* read header */
-    if (! grub_read((char*)&buf, 10) || grub_memcmp(buf, "/* XPM */\n", 10)) {
+    if (! grub_read((char*)&buf, 10, 0xedde0d90) || grub_memcmp(buf, "/* XPM */\n", 10)) {
         grub_close();
         return 0;
     }
     
     /* parse info */
-    while (grub_read((char *)&c, 1)) {
+    while (grub_read((char *)&c, 1, 0xedde0d90)) {
         if (c == '"')
             break;
     }
 
-    while (grub_read((char *)&c, 1) && (c == ' ' || c == '\t'))
+    while (grub_read((char *)&c, 1, 0xedde0d90) && (c == ' ' || c == '\t'))
         ;
 
     i = 0;
     width = c - '0';
-    while (grub_read((char *)&c, 1)) {
+    while (grub_read((char *)&c, 1, 0xedde0d90)) {
         if (c >= '0' && c <= '9')
             width = width * 10 + c - '0';
         else
             break;
     }
-    while (grub_read((char *)&c, 1) && (c == ' ' || c == '\t'))
+    while (grub_read((char *)&c, 1, 0xedde0d90) && (c == ' ' || c == '\t'))
         ;
 
     height = c - '0';
-    while (grub_read((char *)&c, 1)) {
+    while (grub_read((char *)&c, 1, 0xedde0d90)) {
         if (c >= '0' && c <= '9')
             height = height * 10 + c - '0';
         else
             break;
     }
-    while (grub_read((char *)&c, 1) && (c == ' ' || c == '\t'))
+    while (grub_read((char *)&c, 1, 0xedde0d90) && (c == ' ' || c == '\t'))
         ;
 
     colors = c - '0';
-    while (grub_read((char *)&c, 1)) {
+    while (grub_read((char *)&c, 1, 0xedde0d90)) {
         if (c >= '0' && c <= '9')
             colors = colors * 10 + c - '0';
         else
@@ -367,20 +384,20 @@ read_image (char *s)
     }
 
     base = 0;
-    while (grub_read((char *)&c, 1) && c != '"')
+    while (grub_read((char *)&c, 1, 0xedde0d90) && c != '"')
         ;
 
     /* palette */
     for (i = 0, idx = 1; i < colors; i++) {
         len = 0;
 
-        while (grub_read((char *)&c, 1) && c != '"')
+        while (grub_read((char *)&c, 1, 0xedde0d90) && c != '"')
             ;
-        grub_read((char *)&c, 1);       /* char */
+        grub_read((char *)&c, 1, 0xedde0d90);       /* char */
         base = c;
-        grub_read(buf, 4);      /* \t c # */
+        grub_read(buf, 4, 0xedde0d90);      /* \t c # */
 
-        while (grub_read((char *)&c, 1) && c != '"') {
+        while (grub_read((char *)&c, 1, 0xedde0d90) && c != '"') {
             if (len < sizeof(buf))
                 buf[len++] = c;
         }
@@ -404,7 +421,7 @@ read_image (char *s)
     /* parse xpm data */
     while (y < height) {
         while (1) {
-            if (!grub_read((char *)&c, 1)) {
+            if (!grub_read((char *)&c, 1, 0xedde0d90)) {
                 grub_close();
                 return 0;
             }
@@ -412,7 +429,7 @@ read_image (char *s)
                 break;
         }
 
-        while (grub_read((char *)&c, 1) && c != '"') {
+        while (grub_read((char *)&c, 1, 0xedde0d90) && c != '"') {
             for (i = 1; i < 15; i++)
                 if (pal[i] == c) {
                     c = i;

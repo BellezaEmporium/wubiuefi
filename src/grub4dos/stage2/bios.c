@@ -75,6 +75,8 @@ biosdisk (int read, int drive, struct geometry *geometry,
 	
 	if (nsec <=0 || nsec >= 0x80)
 		return 1;	/* failure */
+	if (sector + nsec > geometry->total_sectors)
+		return 1;	/* failure */
 	
 	disk_sector = (char *)((sector<<9) + ((drive==0xffff) ? 0 : rd_base));
 	buf_address = (char *)(segment<<4);
@@ -194,7 +196,9 @@ static unsigned long flags;
 static unsigned long cylinders;
 static unsigned long heads;
 static unsigned long sectors;
-
+#ifndef GRUB_UTIL
+unsigned long force_geometry_tune = 0;
+#endif
 
 /* Return the geometry of DRIVE in GEOMETRY. If an error occurs, return
    non-zero, otherwise zero.  */
@@ -290,6 +294,7 @@ get_diskinfo (int drive, struct geometry *geometry)
 	}
       
 #if (! defined(GRUB_UTIL)) && (! defined(STAGE1_5))
+    if (! force_geometry_tune)
     {
 	unsigned long j;
 	unsigned long d;
@@ -308,18 +313,39 @@ get_diskinfo (int drive, struct geometry *geometry)
 
 		if (((unsigned char)drive) != hooked_drive_map[j].from_drive)
 			continue;
+		/* this is a mapped drive */
 		if ((hooked_drive_map[j].max_sector & 0x3E) == 0 && hooked_drive_map[j].start_sector == 0 && hooked_drive_map[j].sector_count <= 1)
 		{
 			/* this is a map for the whole drive. */
 			d = hooked_drive_map[j].to_drive;
 			j = DRIVE_MAP_SIZE;	/* real drive */
+			break;
 		}
-		break;
+		//break;
+		/* this is a drive emulation, get the geometry from the drive map table */
+		if (hooked_drive_map[j].to_cylinder & 0x2000)
+		{
+			geometry->flags = BIOSDISK_FLAG_CDROM | BIOSDISK_FLAG_LBA_EXTENSION;
+			geometry->heads = 255;
+			geometry->sectors = 15;
+			geometry->sector_size = 2048;
+			geometry->total_sectors = hooked_drive_map[j].sector_count >> 2;
+			geometry->cylinders = geometry->total_sectors / (255 * 15);
+			return 0;
+		}
+		geometry->flags = BIOSDISK_FLAG_LBA_EXTENSION;
+		geometry->heads = hooked_drive_map[j].max_head + 1;
+		geometry->sectors = hooked_drive_map[j].max_sector & 0x3F;
+		geometry->sector_size = 512;
+		geometry->total_sectors = hooked_drive_map[j].sector_count;
+		geometry->cylinders = (geometry->heads * geometry->sectors);
+		geometry->cylinders = (geometry->total_sectors + geometry->cylinders - 1) / geometry->cylinders;
+		return 0;
 	    }
 
 	if (j == DRIVE_MAP_SIZE)	/* real drive */
 	{
-	    if (d >= 0x80 && d < 0x84)
+	    if (d >= 0x80 && d < 0x88)
 	    {
 		d -= 0x80;
 		if (hd_geom[d].sector_size == 512 && hd_geom[d].sectors > 0 && hd_geom[d].sectors <= 63 && hd_geom[d].heads <= 256)
@@ -558,7 +584,7 @@ failure_probe_boot_sector:
 	
 #ifndef GRUB_UTIL
 #if 1
-	if (!(geometry->flags & BIOSDISK_FLAG_LBA_EXTENSION) && ! ((*(char *)0x8205) & 0x08))
+	if (force_geometry_tune || (!(geometry->flags & BIOSDISK_FLAG_LBA_EXTENSION) && ! ((*(char *)0x8205) & 0x08)))
 	{
 		err = geometry->heads;
 		version = geometry->sectors;
@@ -615,6 +641,9 @@ failure_probe_boot_sector:
 
 	if (geometry->cylinders == 0)
 		geometry->cylinders = 1;
+	total_sectors = geometry->cylinders * geometry->heads * geometry->sectors;
+	if (geometry->total_sectors < total_sectors)
+	    geometry->total_sectors = total_sectors;
 #endif	/* ! STAGE1_5 */
 
   /* backup the geometry into array hd_geom or fd_geom. */
@@ -649,7 +678,7 @@ failure_probe_boot_sector:
 
 	if (j == DRIVE_MAP_SIZE)	/* real drive */
 	{
-	    if (d >= 0x80 && d < 0x84)
+	    if (d >= 0x80 && d < 0x88)
 	    {
 		d -= 0x80;
 		if (hd_geom[d].sector_size != 512 || hd_geom[d].sectors <= 0 || hd_geom[d].sectors > 63 || hd_geom[d].heads > 256)

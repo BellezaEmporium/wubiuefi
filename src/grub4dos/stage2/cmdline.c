@@ -122,7 +122,9 @@ enter_cmdline (char *heap, int forever)
   count_lines = -1;
   kernel_type = KERNEL_TYPE_NONE;
   errnum = 0;
+  errorcheck = 1;	/* errorcheck on */
   init_page ();
+  grub_putchar ('\n');
 #ifdef SUPPORT_DISKLESS
   print_network_configuration ();
   grub_putchar ('\n');
