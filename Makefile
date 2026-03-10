@@ -7,37 +7,25 @@ COPYRIGHTYEAR = 2009
 AUTHOR = Agostino Russo
 EMAIL = agostino.russo@gmail.com
 
-WSL = wsl -u root --
-WSLPATH = $(shell wsl -u root -- wslpath -u "$$(cmd.exe /c 'cd' 2>/dev/null | tr -d '\r')" 2>/dev/null || echo "/mnt/d/GH Repos/wubiuefi")
-PYTHON_DLL = /cygdrive/c/Python313/python313.dll
+# Adapted from the original Makefile, for Debian under WSL.
+# Adapt the PYTHON_WIN variable to point to your version of Python, be it version whatever.
+PYTHON_WIN = /mnt/c/Python313/python.exe 
 
 all: build check
 
 build: wubi
 
 wubi: wubi-pre-build
-	rm -rf build/wubi
-	env PYTHONPATH="$(PWD)/src" pyinstaller --noconfirm \
-		--onefile \
-		--windowed \
-		--icon=data/images/Wubi.ico \
-		--add-data="data;data" \
-		--add-data="build/bin;bin" \
-		--add-data="build/version.py;." \
-		--add-data="build/winboot;winboot" \
-		--add-data="build/translations;translations" \
-		--collect-all wubi \
-		--name=$(PACKAGE) \
-		src/main.py
+	/mnt/c/Python313/python.exe -m PyInstaller --noconfirm wubi.spec
 	mv dist/$(PACKAGE).exe build/wubi.exe
 
-
 wubizip: wubi-pre-build
-	PYTHONPATH=src tools/pywine pypack --verbose --outputdir=build/wubi src/main.py data build/bin build/version.py build/winboot build/translations
+	sh -c 'PYTHONPATH=src tools/pywine pypack --verbose --outputdir=build/wubi src/main.py data build/bin build/version.py build/winboot build/translations'
 	cp "$(PYTHON_DLL)" build/wubi
-	cd build; zip -r wubi.zip wubi
+	sh -c 'cd build && zip -r wubi.zip wubi'
 
 wubi-pre-build: check_winboot winboot2 src/main.py src/wubi/*.py cpuid version.py translations
+	/mnt/c/Python313/python.exe -m pip install -r requirements.txt
 	rm -rf build/wubi
 	rm -rf build/bin
 	cp -a blobs build/bin
@@ -54,11 +42,10 @@ pot:
 	sed -i 's/PACKAGE/$(PACKAGE)/' po/$(PACKAGE).pot
 
 update-po: pot
-	for i in po/*.po ;\
-	do \
-	mv $$i $${i}.old ; \
-	(msgmerge $${i}.old po/wubi.pot | msgattrib --no-obsolete > $$i) ; \
-	rm $${i}.old ; \
+	for i in po/*.po; do \
+		mv $$i $${i}.old; \
+		msgmerge $${i}.old po/wubi.pot | msgattrib --no-obsolete > $$i; \
+		rm $${i}.old; \
 	done
 
 translations: po/*.po
@@ -68,38 +55,38 @@ translations: po/*.po
 		language=$${language%%.po}; \
 		target="build/translations/$$language/LC_MESSAGES"; \
 		mkdir -p $$target; \
-		wsl -u root -- msgfmt \
-			--output="$(WSLPATH)/$$target/$(PACKAGE).mo" \
-			"$(WSLPATH)/$$po"; \
+		msgfmt \
+			--output="$$target/$(PACKAGE).mo" \
+			"$$po"; \
 	done
 
 version.py:
-	$(shell echo 'version = "$(VERSION)"' > build/version.py)
-	$(shell echo 'revision = $(REVISION)' >> build/version.py)
-	$(shell echo 'application_name = "$(PACKAGE)"' >> build/version.py)
+	sh -c 'echo "version = \"$(VERSION)\"" > build/version.py'
+	sh -c 'echo "revision = $(REVISION)" >> build/version.py'
+	sh -c 'echo "application_name = \"$(PACKAGE)\"" >> build/version.py'
 
 cpuid: src/cpuid/cpuid.c
 	cp -rf src/cpuid build
-	cd build/cpuid; make
+	sh -c 'cd build/cpuid && make'
 
 winboot2:
 	mkdir -p build/winboot build/winboot/EFI build/grubutil
 	cp -f data/wubildr.cfg data/wubildr-bootstrap.cfg build/winboot/
-	$(WSL) /usr/lib/grub/i386-pc/grub-ntldr-img --grub2 \
+	/usr/lib/grub/i386-pc/grub-ntldr-img --grub2 \
 		--boot-file=wubildr \
-		-o "$(WSLPATH)/build/winboot/wubildr.mbr"
-	cd build/winboot && tar cf wubildr.tar wubildr.cfg
-	$(WSL) grub-mkimage -O i386-pc \
-		-c "$(WSLPATH)/build/winboot/wubildr-bootstrap.cfg" \
-		-m "$(WSLPATH)/build/winboot/wubildr.tar" \
-		-o "$(WSLPATH)/build/grubutil/core.img" \
+		-o "build/winboot/wubildr.mbr"
+	sh -c 'cd build/winboot && tar cf wubildr.tar wubildr.cfg'
+	grub-mkimage -O i386-pc \
+		-c "build/winboot/wubildr-bootstrap.cfg" \
+		-m "build/winboot/wubildr.tar" \
+		-o "build/grubutil/core.img" \
 		loadenv biosdisk part_msdos part_gpt fat ntfs ext2 ntfscomp \
 		iso9660 loopback search linux boot minicmd cat cpuid chain \
 		halt help ls reboot echo test configfile gzio normal sleep \
 		memdisk tar font gfxterm gettext true vbe vga video_bochs video_cirrus probe
-	wsl -u root -- sh -c "cat /usr/lib/grub/i386-pc/lnxboot.img \
-		'/mnt/d/GH Repos/wubiuefi/build/grubutil/core.img' \
-		> '/mnt/d/GH Repos/wubiuefi/build/winboot/wubildr'"
+	sh -c "cat /usr/lib/grub/i386-pc/lnxboot.img \
+		'build/grubutil/core.img' \
+		> 'build/winboot/wubildr'"
 
 winboot: grub4dos grubutil
 	mkdir -p build/winboot
@@ -107,21 +94,21 @@ winboot: grub4dos grubutil
 	cp -f build/grub4dos/stage2/grldr build/winboot/wubildr
 	cp -f build/grub4dos/stage2/grub.exe build/winboot/wubildr.exe
 	dd if=build/winboot/wubildr of=build/winboot/wubildr.mbr bs=1 count=8192
-	cd build/winboot; ../grubutil/grubinst/grubinst -o -b=wubildr wubildr.mbr
+	sh -c 'cd build/winboot && ../grubutil/grubinst/grubinst -o -b=wubildr wubildr.mbr'
 
 grub4dos: src/grub4dos/*
 	cp -rf src/grub4dos build
-	cd build/grub4dos;./configure --enable-preset-menu=../../data/menu.winboot
-	cd build/grub4dos; make
+	sh -c 'cd build/grub4dos && ./configure --enable-preset-menu=../../data/menu.winboot'
+	sh -c 'cd build/grub4dos && make'
 
 grubutil: src/grubutil/grubinst/*
 	cp -rf src/grubutil build
-	cd build/grubutil/grubinst; make
+	sh -c 'cd build/grubutil/grubinst && make'
 
 runbin: wubi
 	rm -rf build/test
 	mkdir build/test
-	cd build/test; ../../tools/wine ../wubi.exe --test
+	sh -c 'cd build/test && ../../tools/wine ../wubi --test'
 
 check_winboot: tools/check_winboot
 	tools/check_winboot
@@ -130,10 +117,10 @@ unittest:
 	tools/pywine tools/test
 
 check: wubi
-	tests/run
+	PYTHONPATH=src $(PYTHON_WIN) tests/run
 
 runpy:
-	PYTHONPATH=src tools/pywine src/main.py --test
+	sh -c 'PYTHONPATH=src tools/pywine src/main.py --test'
 
 clean:
 	rm -rf dist/*
@@ -148,5 +135,4 @@ distclean: clean
 	rm -rf data/custom-installation/packages
 	rm -rf shim
 
-.PHONY: all build test wubi wubizip wubi-pre-build pot runpy runbin check_winboot unittest
-	7z translations version.py winboot winboot2 grubutil grub4dos clean distclean
+.PHONY: all build check wubi wubizip wubi-pre-build pot runpy runbin check_winboot unittest clean distclean translations version.py winboot winboot2 grubutil grub4dos

@@ -190,12 +190,12 @@ class Task(object):
                 self.associated_function_args = args
             if kargs:
                 self.associated_function_kargs = kargs
-            if 'associated_task' in self.associated_function.func_code.co_varnames:
+            if 'associated_task' in self.associated_function.__code__.co_varnames:
                 self.associated_function_kargs['associated_task'] = self
             result = None
             try:
                 result = self.associated_function(*self.associated_function_args, **self.associated_function_kargs)
-            except Exception, err:
+            except Exception as err:
                 self.error = sys.exc_info()
                 self.status = Task.FAILED
                 log.exception(err)
@@ -222,6 +222,8 @@ class Task(object):
         if self._speed:
             return self._speed
         if not self.last_completed or not self.completed:
+            return ""
+        if self.progress_timestamp is None or self.last_progress_timestamp is None:
             return ""
         task_time = self.progress_timestamp - self.last_progress_timestamp
         if not task_time:
@@ -253,11 +255,11 @@ class Task(object):
         Remaining time in human readable format + number for plural forms
         '''
         if self.end_time:
-            return _("0s"),0
+            return ("0s"),0
         end_time = self.estimate_end_time()
         secs = end_time - time.time()
         if secs <= 0:
-            return _("0s"),0
+            return ("0s"),0
         hours = int(secs/3600)
         secs = secs - hours*3600
         mins = int(secs/60)
@@ -266,14 +268,14 @@ class Task(object):
         secs = min(secs, 59)
         message = []
         if hours:
-            message.append(_("%ih") % hours)
+            message.append(("%ih") % hours)
             plural_n = hours + mins
         if mins:
-            message.append(_("%imin") % mins)
+            message.append(("%imin") % mins)
         if not hours:
             plural_n = mins + secs
             if not mins or secs:
-                message.append(_("%is") % secs)
+                message.append(("%is") % secs)
         if plural_n > 1:
             plural_n = 2
         message = " ".join(message)
@@ -397,7 +399,7 @@ class ThreadedTaskList(threading.Thread, TaskList):
         TaskList.__call__(self)
 
     def is_cancelled(self):
-        return self._stopped_event.isSet() or TaskList.is_cancelled(self)
+        return self._stopped_event.is_set() or TaskList.is_cancelled(self)
 
 def test():
     handler = logging.StreamHandler()
@@ -419,7 +421,7 @@ def test():
         associated_task.add_subtask(fsleep, "fsleepsub2")
 
     def callback(task, message):
-        print message, task._get_weight(), task._get_completed(), task.weight, task.size, task.completed
+        print((message, task._get_weight(), task._get_completed(), task.weight, task.size, task.completed))
 
     tasks = [
         Task(fsleep, "fsleep1"),

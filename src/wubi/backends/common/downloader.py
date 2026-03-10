@@ -26,11 +26,7 @@ http://linux.duke.edu/projects/urlgrabber/help/urlgrabber.grabber.html
 import os
 import logging
 log = logging.getLogger('downloader')
-
-from urlgrabber.grabber import URLGrabber
-import encodings.idna #required by urlgrabber
-import encodings.ascii #required by urlgrabber
-import encodings.utf_8 #required by urlgrabber
+import requests
 
 class DownloadProgress(object):
     def __init__(self, associated_task):
@@ -59,21 +55,35 @@ class DownloadProgress(object):
         if self.associated_task:
             self.associated_task.finish()
 
-def download(url, filename=None, associated_task=None, web_proxy = None):
+def download(url, filename=None, associated_task=None, web_proxy=None):
     if associated_task:
-        associated_task.description = _("Downloading %s") % os.path.basename(url)
+        associated_task.description = "Downloading %s" % os.path.basename(url)
         associated_task.unit = "KB"
     log.debug("downloading %s > %s" % (url, filename))
     progress_obj = DownloadProgress(associated_task)
-    if web_proxy:
-        web_proxy={'http':web_proxy}
-    urlgrabber = URLGrabber(
-        reget = 'simple',
-        proxies = web_proxy,
-        progress_obj = progress_obj)
-    if os.path.isdir(filename):
+    
+    proxies = {'http': web_proxy, 'https': web_proxy} if web_proxy else None
+    
+    if filename and os.path.isdir(filename):
         basename = os.path.basename(url)
         filename = os.path.join(filename, basename)
-    filename = urlgrabber.urlgrab(url, filename=filename)
+    
+    response = requests.get(url, proxies=proxies, stream=True)
+    response.raise_for_status()
+    
+    if filename is None:
+        filename = os.path.basename(url)
+    
+    progress_obj.start(filename, url, os.path.basename(url), 
+                       int(response.headers.get('content-length', 0)), "")
+    
+    bytes_read = 0
+    with open(filename, 'wb') as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            if chunk:
+                f.write(chunk)
+                bytes_read += len(chunk)
+                progress_obj.update(bytes_read)
+    
+    progress_obj.end(bytes_read)
     return filename
-

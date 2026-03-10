@@ -21,7 +21,7 @@
 Python wrappers around win32 widgets and window classes
 '''
 
-import defs
+from . import defs
 import os
 import ctypes
 
@@ -48,11 +48,7 @@ def event_dispatcher(hwnd, message, wparam, lparam):
         result = handler((hwnd, message, wparam, lparam))
         if bool(result):
             return result
-    return ctypes.windll.user32.DefWindowProcW(
-        ctypes.c_int(hwnd),
-        ctypes.c_int(message),
-        ctypes.c_int(wparam),
-        ctypes.c_int(lparam))
+    return defs.DefWindowProcW(hwnd, message, wparam, lparam)
 
 def event_handler(hwnd=None, message=None, wparam=None, lparam=None):
     '''
@@ -97,7 +93,7 @@ class BasicWindow(object):
                 self._window_class_name_,
                 self._window_class_style_,
                 icon=self._icon)
-        self._window_class_._atom_ = ctypes.windll.user32.RegisterClassExW(ctypes.byref(self._window_class_))
+        self._window_class_._atom_ = defs.RegisterClassExW(ctypes.byref(self._window_class_))
         if not self._window_class_._atom_:
             raise ctypes.WinError()
 
@@ -126,6 +122,8 @@ class BasicWindow(object):
             hmenu,
             frontend_hinstance,
             lpparam)
+        if not self._hwnd:
+            raise ctypes.WinError()
 
     def _register_handlers(self):
         for key in dir(self):
@@ -495,7 +493,7 @@ class Tab(Widget):
         self._send_message(defs.TCM_INSERTITEM, position, ctypes.addressof(item))
 
 class Tooltip(Widget):
-    _window_class_name_ = u"SysTabControl32"
+    _window_class_name_ = "SysTabControl32"
 
 
 class ListBox(Widget):

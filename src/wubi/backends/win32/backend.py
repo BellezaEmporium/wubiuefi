@@ -20,19 +20,18 @@
 
 import sys
 import os
-import _winreg
 import ctypes
 #import platform
-from drive import Drive
-from virtualdisk import create_virtual_disk
-from eject import eject_cd
-import registry
-from memory import get_total_memory_mb
+from .drive import Drive
+from .virtualdisk import create_virtual_disk
+from .eject import eject_cd
+from . import registry
+from .memory import get_total_memory_mb
 from wubi.backends.common.backend import Backend
 from wubi.backends.common.utils import run_command, spawn_command, replace_line_in_file, read_file, write_file, join_path, remove_line_in_file
 from wubi.backends.common.mappings import country2tz, name2country, gmt2country, country_gmt2tz, gmt2tz
 from os.path import abspath, isfile, isdir
-import mappings
+from . import mappings
 import shutil
 import logging
 import tempfile
@@ -93,7 +92,7 @@ class WindowsBackend(Backend):
             run_command(command)
             command = ['compact', join_path(self.info.target_dir,'*.*'), '/U', '/A', '/F']
             run_command(command)
-        except Exception, err:
+        except Exception as err:
             log.error(err)
 
     def uncompress_files(self, associated_task):
@@ -105,7 +104,7 @@ class WindowsBackend(Backend):
             log.debug(" ".join(command))
             try:
                 run_command(command)
-            except Exception, err:
+            except Exception as err:
                 log.error(err)
 
     def create_uninstaller(self, associated_task):
@@ -261,6 +260,7 @@ class WindowsBackend(Backend):
         full_version = sys.getwindowsversion()
         major, minor, build, platform, txt = full_version
         #platform.platform(), platform.system(), platform.release(), platform.version()
+        version = None
         if platform == 0:
             version = 'win32'
         elif platform == 1:
@@ -281,7 +281,9 @@ class WindowsBackend(Backend):
                     version = 'xp'
                 elif minor == 2:
                     version = '2003'
-            elif major == 6:
+            elif major >= 6:
+                # NT 6+ (Vista and newer, including Windows 7/8/10/11)
+                # all use the same bootloader family in this codebase.
                 version = 'vista'
         log.debug('windows version=%s' % version)
         return version
@@ -362,13 +364,19 @@ class WindowsBackend(Backend):
 
     def get_windows_username(self):
         windows_username = os.getenv('username')
-        windows_username = windows_username.decode('ascii', 'ignore')
+        if isinstance(windows_username, bytes):
+            windows_username = windows_username.decode('ascii', 'ignore')
+        elif windows_username is None:
+            windows_username = ''
         log.debug('windows_username=%s' % windows_username)
         return windows_username
 
     def get_windows_user_full_name(self):
         user_full_name = os.getenv('username') #TBD
-        user_full_name = user_full_name.decode('ascii', 'ignore')
+        if isinstance(user_full_name, bytes):
+            user_full_name = user_full_name.decode('ascii', 'ignore')
+        elif user_full_name is None:
+            user_full_name = ''
         log.debug('user_full_name=%s' % user_full_name)
         return user_full_name
 
@@ -378,7 +386,8 @@ class WindowsBackend(Backend):
         user_directory = ""
         if homedrive and homepath:
             user_directory = join_path(homedrive, homepath)
-            user_directory = user_directory.decode('ascii', 'ignore')
+            if isinstance(user_directory, bytes):
+                user_directory = user_directory.decode('ascii', 'ignore')
         log.debug('user_directory=%s' % user_directory)
         return user_directory
 
@@ -430,7 +439,7 @@ class WindowsBackend(Backend):
         command = [self.info.iso_extractor, 'e', '-i!' + file_path, '-o' + output_dir, iso_path]
         try:
             run_command(command)
-        except Exception, err:
+        except Exception as err:
             log.exception(err)
             output_file = None
         if output_file and isfile(output_file):
@@ -449,7 +458,7 @@ class WindowsBackend(Backend):
         dec_xz_subp.stdout.close()
         dec_tar_subp.communicate()
         if dec_tar_subp.returncode != 0:
-            raise Exception, ('Extraction failed with code: %d' %
+            raise Exception('Extraction failed with code: %d' %
                               dec_tar_subp.returncode)
         # TODO: Checksum: http://tukaani.org/xz/xz-file-format.txt
         # Only remove downloaded image
@@ -519,11 +528,13 @@ class WindowsBackend(Backend):
         command = [self.info.iso_extractor,'l',iso_path]
         try:
             output = run_command(command)
-        except Exception, err:
+        except Exception as err:
             log.exception(err)
             log.debug('command >>%s' % ' '.join(command))
             output = None
         if not output: return []
+        if isinstance(output, bytes):
+            output = output.decode('utf-8', 'ignore')
 
         lines = output.split(os.linesep)
         start = None
@@ -562,7 +573,15 @@ class WindowsBackend(Backend):
                 log.error("Cannot find bcdedit")
                 return False
             command = [bcdedit, '/enum']
-            result = run_command(command)
+            try:
+                result = run_command(command)
+            except Exception as err:
+                # bcdedit can fail with "Access denied" when not elevated.
+                # EFI detection is best-effort and should not abort startup.
+                log.warning('EFI detection skipped: %s' % err)
+                return False
+            if isinstance(result, bytes):
+                result = result.decode('utf-8', 'ignore')
             result = result.lower()
             if "bootmgfw.efi" in result:
                 efi = True
@@ -652,7 +671,7 @@ class WindowsBackend(Backend):
                 log.debug('Removing EFI folder %s' % dest)
                 shutil.rmtree(dest)
             run_command(['mountvol', efi_drive, '/d'])
-        except Exception, err: #this shouldn't be fatal
+        except Exception as err: #this shouldn't be fatal
             log.error(err)            
         return
 
@@ -688,7 +707,7 @@ class WindowsBackend(Backend):
             self.undo_EFI_folder(associated_task)
             try:
                 run_command(['powercfg', '/h', 'on'])
-            except Exception, err: #this shouldn't be fatal
+            except Exception as err: #this shouldn't be fatal
                 log.error(err)
 
     def modify_bootini(self, drive, associated_task):
@@ -704,7 +723,7 @@ class WindowsBackend(Backend):
         dest = join_path(drive.path, 'wubildr.mbr')
         shutil.copyfile(src,  dest)
         run_command(['attrib', '-R', '-S', '-H', bootini])
-        boot_line = 'C:\wubildr.mbr = "%s"' % self.info.distro.name
+        boot_line = 'C:\\wubildr.mbr = "%s"' % self.info.distro.name
         old_line = boot_line[:boot_line.index("=")].strip().lower()
         # ConfigParser gets confused by the ':' and changes the options order
         content = read_file(bootini)
@@ -733,7 +752,7 @@ class WindowsBackend(Backend):
         if not os.path.isfile(bootini):
             return
         run_command(['attrib', '-R', '-S', '-H', bootini])
-        remove_line_in_file(bootini, 'c:\wubildr.mbr', ignore_case=True)
+        remove_line_in_file(bootini, 'c:\\wubildr.mbr', ignore_case=True)
         run_command(['attrib', '+R', '+S', '+H', bootini])
 
     def modify_configsys(self, drive, associated_task):
@@ -746,6 +765,10 @@ class WindowsBackend(Backend):
         shutil.copyfile(src,  dest)
         run_command(['attrib', '-R', '-S', '-H', configsys])
         config = read_file(configsys)
+        if isinstance(config, bytes):
+            config = config.decode('utf-8')
+        if not config:
+            config = ''
         if 'REM WUBI MENU START\n' in config:
             log.debug("Configsys has already been modified")
             return
@@ -812,17 +835,18 @@ class WindowsBackend(Backend):
             efi_path = self.modify_EFI_folder(associated_task,bcdedit)
             try:
                 run_command(['powercfg', '/h', 'off'])
-            except Exception, err: #this shouldn't be fatal
+            except Exception as err: #this shouldn't be fatal
                 log.error(err)
             command = [bcdedit, '/copy', '{bootmgr}', '/d', '%s' % self.info.distro.name]
             id = run_command(command)
-            id = id[id.index('{'):id.index('}')+1]
+            id = id.decode('utf-8') if isinstance(id, bytes) else id
+            id = id[id.index('{') : id.index('}') + 1]
             run_command([bcdedit, '/set', id, 'path', efi_path])
             try:
                 run_command([bcdedit, '/set', '{fwbootmgr}', 'displayorder', id, '/addlast'])
                 run_command([bcdedit, '/set', '{fwbootmgr}', 'timeout', '10'])
                 run_command([bcdedit, '/set', '{fwbootmgr}', 'bootsequence', id])
-            except Exception, err: #this shouldn't be fatal
+            except Exception as err: #this shouldn't be fatal
                 log.error(err)
             registry.set_value(
                 'HKEY_LOCAL_MACHINE',
@@ -833,7 +857,8 @@ class WindowsBackend(Backend):
 
         command = [bcdedit, '/create', '/d', '%s' % self.info.distro.name, '/application', 'bootsector']
         id = run_command(command)
-        id = id[id.index('{'):id.index('}')+1]
+        id = id.decode('utf-8') if isinstance(id, bytes) else id
+        id = id[id.index('{') : id.index('}') + 1]
         mbr_path = join_path(self.info.target_dir, 'winboot', 'wubildr.mbr')[2:]
         run_command([bcdedit, '/set', id, 'device', 'partition=%s' % self.info.target_drive.path])
         run_command([bcdedit, '/set', id, 'path', mbr_path])
@@ -896,7 +921,7 @@ class WindowsBackend(Backend):
                 self.info.registry_key,
                 'VistaBootDrive',
                 "")
-        except Exception, err: #this shouldn't be fatal
+        except Exception as err: #this shouldn't be fatal
             log.error(err)
 
     def get_arch(self):

@@ -1,3 +1,6 @@
 # WUBI requirements
 pyinstaller
 modulegraph
+requests
+libtorrent
+PGPy13

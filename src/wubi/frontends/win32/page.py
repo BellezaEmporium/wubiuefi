@@ -1,28 +1,33 @@
 # Copyright (c) 2008 Agostino Russo
 #
-# Written by Agostino Russo <agostino.russo@gmail.com>
+# Written by Agostino Russo
 #
 # This file is part of Wubi the Win32 Ubuntu Installer.
 #
 # Wubi is free software; you can redistribute it and/or modify
-# it under 5the terms of the GNU Lesser General Public License as
+# it under the terms of the GNU Lesser General Public License as
 # published by the Free Software Foundation; either version 2.1 of
 # the License, or (at your option) any later version.
 #
 # Wubi is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 # GNU Lesser General Public License for more details.
 #
 # You should have received a copy of the GNU Lesser General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
+# along with this program. If not, see .
 
 from winui import ui
+from gettext import gettext as _
 import os
 import logging
 import gettext
+
 log = logging.getLogger("WinuiPage")
+
+
+def _image_path(info, *parts):
+    return os.path.join(str(info.image_dir), "mbcs", *(str(part) for part in parts))
 
 
 class Page(ui.Page):
@@ -38,17 +43,26 @@ class Page(ui.Page):
         self.resize(width, height)
         self.width = width
         self.height = height
+
         language1 = self.info.locale and self.info.locale.split('.')[0]
         language2 = language1 and language1.split('_')[0]
-        log.info("appname=%s, localedir=%s, languages=%s",self.info.application_name, self.info.translations_dir, [language1, language2])
-        translation = gettext.translation(self.info.application_name, localedir=self.info.translations_dir, languages=[language1, language2, "en_US", "en"])
-        translation.install(unicode=True, names=['ngettext'])
+        log.info(
+            "appname=%s, localedir=%s, languages=%s",
+            self.info.application_name,
+            self.info.translations_dir,
+            [language1, language2],
+        )
+        translation = gettext.translation(
+            self.info.application_name,
+            localedir=self.info.translations_dir,
+            languages=[language1, language2, "en_US", "en"],
+            fallback=True,
+        )
+        translation.install(names=['ngettext'])
+
     def insert_vertical_image(self, bmp_file):
-        self.vertical_image = ui.Bitmap(
-            self,
-            0, 0, 164, 314)
-        self.vertical_image.set_image(
-            os.path.join(unicode(str(self.info.image_dir), 'mbcs'), unicode(str(bmp_file), 'mbcs')))
+        self.vertical_image = ui.Bitmap(self, 0, 0, 164, 314)
+        self.vertical_image.set_image(_image_path(self.info, bmp_file))
         self.vertical_image.width = 164
 
     def insert_header(self, title, subtitle, bmp_file):
@@ -57,40 +71,42 @@ class Page(ui.Page):
         '''
         hbh = 57
         hbw = 150
-        self.header = ui.Panel(
-            self,
-            0, 0 , self.width, hbh+2)
+        self.header = ui.Panel(self, 0, 0, self.width, hbh + 2)
+
         if bmp_file:
-            self.header.image = ui.Bitmap(
-                self.header,
-                0, 0, hbw, hbh)
-            self.header.image.set_image(
-                os.path.join(unicode(str(self.info.image_dir), 'mbcs'), unicode(str(bmp_file), 'mbcs')))
+            self.header.image = ui.Bitmap(self.header, 0, 0, hbw, hbh)
+            self.header.image.set_image(_image_path(self.info, bmp_file))
+
         if title:
             self.header.title = ui.Label(
                 self.header,
                 hbw + 20, 10, self.width - 200, 16,
-                text = title)
+                text=title,
+            )
             self.header.title.set_font(bold=True)
+
         if subtitle:
             self.header.subtitle = ui.Label(
                 self.header,
                 hbw + 20, 26, self.width - 200, 26,
-                text = subtitle)
-        self.header.line = ui.EtchedRectangle(self.header,0, hbh,self.width, 2)
+                text=subtitle,
+            )
+
+        self.header.line = ui.EtchedRectangle(self.header, 0, hbh, self.width, 2)
         self.header.height = hbh + 2
-        self.header.set_background_color(255,255,255)
+        self.header.set_background_color(255, 255, 255)
 
     def insert_main(self):
         '''
         Panel containing client widgets
-        Inserts a control conatiner
+        Inserts a control container
         appropriately resized to take care of header and footer
         '''
-        left=0
+        left = 0
         top = 0
         width = self.width
         height = self.height
+
         if hasattr(self, "header"):
             top += self.header.height
             height -= self.header.height
@@ -99,9 +115,8 @@ class Page(ui.Page):
         if hasattr(self, "vertical_image"):
             left = self.vertical_image.width
             width -= left
-        self.main = ui.Panel(
-            self,
-            left, top, width, height)
+
+        self.main = ui.Panel(self, left, top, width, height)
         self.main.height = height
         self.main.width = width
 
@@ -119,38 +134,51 @@ class Page(ui.Page):
 
         self.navigation = ui.Panel(
             self,
-            0, self.height - nbh - 20 -sep_top - sep_height, self.width, nbh + 20 + sep_top + sep_height)
+            0,
+            self.height - nbh - 20 - sep_top - sep_height,
+            self.width,
+            nbh + 20 + sep_top + sep_height,
+        )
 
         if not hasattr(self, "vertical_image"):
             self.revision_label = ui.Label(
                 self.navigation,
                 10, 0, 40, 20,
-                "Rev %s" % self.info.revision)
+                _("Rev %s") % self.info.revision,
+            )
             self.revision_label.disable()
             self.line = ui.EtchedRectangle(
                 self.navigation,
-                50, sep_top,self.width - 60, sep_height)
+                50, sep_top, self.width - 60, sep_height,
+            )
         else:
             self.line = ui.EtchedRectangle(
                 self.navigation,
-                0, sep_top, self.width, sep_height)
+                0, sep_top, self.width, sep_height,
+            )
 
-        for i,text in enumerate((button1_text, button2_text, button3_text)):
+        for i, text in enumerate((button1_text, button2_text, button3_text)):
             if not text:
                 continue
-            if default and i + 1 == default:
-                Button = ui.DefaultButton
-            else:
-                Button = ui.Button
+
+            Button = ui.DefaultButton if default and i + 1 == default else ui.Button
+
             n = 0
             for other in (button1_text, button2_text, button3_text)[i:]:
                 if other:
                     n += 1
+
             button = Button(
                 self.navigation,
-                self.width -(nbw + 10) * n, 10 + sep_top + sep_height, nbw, nbh,
-                text=text)
+                self.width - (nbw + 10) * n,
+                10 + sep_top + sep_height,
+                nbw,
+                nbh,
+                text=text,
+            )
             if default and i + 1 == default:
                 button.set_focus()
-            setattr(self.navigation, "button%s" % ( i + 1), button)
-            self.navigation.height = nbh + 20 + sep_top + sep_height
+
+            setattr(self.navigation, "button%s" % (i + 1), button)
+
+        self.navigation.height = nbh + 20 + sep_top + sep_height

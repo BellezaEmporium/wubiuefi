@@ -1241,4 +1241,4 @@ language2lang_country = {
     "Venda" : "ve_ZA",
 }
 
-lang_country2language = dict([(v,k) for k,v in language2lang_country.items()])
+lang_country2language = dict([(v,k) for k,v in list(language2lang_country.items())])

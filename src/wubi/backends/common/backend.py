@@ -28,17 +28,18 @@ import time
 import gettext
 import glob
 import shutil
-import ConfigParser
-import btdownloader
-import downloader
+import configparser
+import functools
+from . import btdownloader
+from . import downloader
 import subprocess
 
-from metalink import parse_metalink
-from tasklist import ThreadedTaskList, Task
-from distro import Distro
-from mappings import lang_country2linux_locale
-from utils import join_path, run_nonblocking_command, md5_password, copy_file, read_file, write_file, get_file_hash, reversed, find_line_in_file, unix_path, rm_tree, spawn_command
-from signature import verify_gpg_signature
+from .metalink import parse_metalink
+from .tasklist import ThreadedTaskList, Task
+from .distro import Distro
+from .mappings import lang_country2linux_locale
+from .utils import join_path, run_nonblocking_command, md5_password, copy_file, read_file, write_file, get_file_hash, reversed, find_line_in_file, unix_path, rm_tree, spawn_command
+from .signature import verify_gpg_signature
 from wubi import errors
 from os.path import abspath
 
@@ -70,8 +71,7 @@ class Backend(object):
         if self.info.locale:
             locale.setlocale(locale.LC_ALL, self.info.locale)
             log.debug('user defined locale = %s' % self.info.locale)
-        gettext.install(self.info.application_name, localedir=self.info.translations_dir, unicode=True, names=['ngettext'])
-
+        gettext.install(self.info.application_name, localedir=self.info.translations_dir, names=['ngettext'])
     def get_installation_tasklist(self):
         self.cache_cd_path()
         dimage = self.info.distro.diskimage
@@ -79,79 +79,79 @@ class Backend(object):
         if dimage and not self.cd_path and not self.iso_path and not self.info.target_drive.is_fat():
             tasks = [
             Task(self.select_target_dir,
-                 description=_("Selecting the target directory")),
+                 description=("Selecting the target directory")),
             Task(self.create_dir_structure,
-                 description=_("Creating the directories")),
+                 description=("Creating the directories")),
             Task(self.create_uninstaller,
-                 description=_("Creating the uninstaller")),
+                 description=("Creating the uninstaller")),
             Task(self.create_preseed_diskimage,
-                 description=_("Creating a preseed file")),
+                 description=("Creating a preseed file")),
             Task(self.get_diskimage,
-                 description=_("Retrieving installation files")),
-            Task(self.extract_diskimage, description=_("Extracting")),
-            Task(self.choose_disk_sizes, description=_("Choosing disk sizes")),
+                 description=("Retrieving installation files")),
+            Task(self.extract_diskimage, description=("Extracting")),
+            Task(self.choose_disk_sizes, description=("Choosing disk sizes")),
             Task(self.expand_diskimage,
-                 description=_("Expanding")),
+                 description=("Expanding")),
             Task(self.create_swap_diskimage,
-                 description=_("Creating virtual memory")),
+                 description=("Creating virtual memory")),
             Task(self.modify_bootloader,
-                 description=_("Adding a new bootloader entry")),
+                 description=("Adding a new bootloader entry")),
             Task(self.diskimage_bootloader,
-                 description=_("Installing the bootloader")),
+                 description=("Installing the bootloader")),
             ]
         else:
             tasks = [
-            Task(self.select_target_dir, description=_("Selecting the target directory")),
-            Task(self.create_dir_structure, description=_("Creating the installation directories")),
-            Task(self.uncompress_target_dir, description=_("Uncompressing files")),
-            Task(self.create_uninstaller, description=_("Creating the uninstaller")),
-            Task(self.copy_installation_files, description=_("Copying installation files")),
-            Task(self.get_iso, description=_("Retrieving installation files")),
-            Task(self.extract_kernel, description=_("Extracting the kernel")),
-            Task(self.choose_disk_sizes, description=_("Choosing disk sizes")),
-            Task(self.create_preseed, description=_("Creating a preseed file")),
-            Task(self.modify_bootloader, description=_("Adding a new bootloader entry")),
-            Task(self.modify_grub_configuration, description=_("Setting up installation boot menu")),
-            Task(self.create_virtual_disks, description=_("Creating the virtual disks")),
-            Task(self.uncompress_files, description=_("Uncompressing files")),
-            Task(self.eject_cd, description=_("Ejecting the CD")),
+            Task(self.select_target_dir, description=("Selecting the target directory")),
+            Task(self.create_dir_structure, description=("Creating the installation directories")),
+            Task(self.uncompress_target_dir, description=("Uncompressing files")),
+            Task(self.create_uninstaller, description=("Creating the uninstaller")),
+            Task(self.copy_installation_files, description=("Copying installation files")),
+            Task(self.get_iso, description=("Retrieving installation files")),
+            Task(self.extract_kernel, description=("Extracting the kernel")),
+            Task(self.choose_disk_sizes, description=("Choosing disk sizes")),
+            Task(self.create_preseed, description=("Creating a preseed file")),
+            Task(self.modify_bootloader, description=("Adding a new bootloader entry")),
+            Task(self.modify_grub_configuration, description=("Setting up installation boot menu")),
+            Task(self.create_virtual_disks, description=("Creating the virtual disks")),
+            Task(self.uncompress_files, description=("Uncompressing files")),
+            Task(self.eject_cd, description=("Ejecting the CD")),
             ]
-        description = _("Installing %(distro)s-%(version)s") % dict(distro=self.info.distro.name, version=self.info.version)
+        description = ("Installing %(distro)s-%(version)s") % dict(distro=self.info.distro.name, version=self.info.version)
         tasklist = ThreadedTaskList(description=description, tasks=tasks)
         return tasklist
 
     def get_cdboot_tasklist(self):
         self.cache_cd_path()
         tasks = [
-            Task(self.select_target_dir, description=_("Selecting the target directory")),
-            Task(self.create_dir_structure, description=_("Creating the installation directories")),
-            Task(self.uncompress_target_dir, description=_("Uncompressing files")),
-            Task(self.create_uninstaller, description=_("Creating the uninstaller")),
-            Task(self.copy_installation_files, description=_("Copying installation files")),
-            Task(self.use_cd, description=_("Extracting CD content")),
-            Task(self.extract_kernel, description=_("Extracting the kernel")),
-            Task(self.create_preseed_cdboot, description=_("Creating a preseed file")),
-            Task(self.modify_bootloader, description=_("Adding a new bootloader entry")),
-            Task(self.modify_grub_configuration, description=_("Setting up installation boot menu")),
-            Task(self.uncompress_files, description=_("Uncompressing files")),
-            Task(self.eject_cd, description=_("Ejecting the CD")),
+            Task(self.select_target_dir, description=("Selecting the target directory")),
+            Task(self.create_dir_structure, description=("Creating the installation directories")),
+            Task(self.uncompress_target_dir, description=("Uncompressing files")),
+            Task(self.create_uninstaller, description=("Creating the uninstaller")),
+            Task(self.copy_installation_files, description=("Copying installation files")),
+            Task(self.use_cd, description=("Extracting CD content")),
+            Task(self.extract_kernel, description=("Extracting the kernel")),
+            Task(self.create_preseed_cdboot, description=("Creating a preseed file")),
+            Task(self.modify_bootloader, description=("Adding a new bootloader entry")),
+            Task(self.modify_grub_configuration, description=("Setting up installation boot menu")),
+            Task(self.uncompress_files, description=("Uncompressing files")),
+            Task(self.eject_cd, description=("Ejecting the CD")),
             ]
-        tasklist = ThreadedTaskList(description=_("Installing CD boot helper"), tasks=tasks)
+        tasklist = ThreadedTaskList(description=("Installing CD boot helper"), tasks=tasks)
         return tasklist
 
     def get_reboot_tasklist(self):
         tasks = [
-            Task(self.reboot, description=_("Rebooting")),
+            Task(self.reboot, description=("Rebooting")),
             ]
-        tasklist = ThreadedTaskList(description=_("Rebooting"), tasks=tasks)
+        tasklist = ThreadedTaskList(description=("Rebooting"), tasks=tasks)
         return tasklist
 
     def get_uninstallation_tasklist(self):
         tasks = [
-            Task(self.undo_bootloader, _("Remove bootloader entry")),
-            Task(self.remove_target_dir, _("Remove target dir")),
-            Task(self.remove_registry_key, _("Remove registry key")),]
-        tasklist = ThreadedTaskList(description=_("Uninstalling %s") % self.info.previous_distro_name, tasks=tasks)
+            Task(self.undo_bootloader, ("Remove bootloader entry")),
+            Task(self.remove_target_dir, ("Remove target dir")),
+            Task(self.remove_registry_key, ("Remove registry key")),]
+        tasklist = ThreadedTaskList(description=("Uninstalling %s") % self.info.previous_distro_name, tasks=tasks)
         return tasklist
 
     def show_info(self):
@@ -257,6 +257,12 @@ class Backend(object):
         Fetch information required by the installer
         '''
 
+    def fetch_host_info(self):
+        '''
+        Fetch host system information
+        '''
+        pass
+
     def dummy_function(self):
         time.sleep(1)
 
@@ -272,7 +278,7 @@ class Backend(object):
             return False
         md5sums = read_file(metalink_md5sums)
         log.debug("metalink md5sums:\n%s" % md5sums)
-        md5sums = dict([reversed(line.split()) for line in md5sums.replace('*','').split('\n') if line])
+        md5sums = dict([tuple(reversed(line.split())) for line in md5sums.replace('*','').split('\n') if line])
         hashsum = md5sums.get(os.path.basename(metalink))
         if not hashsum:
             log.error("Could not find %s in metalink md5sums)" % os.path.basename(metalink))
@@ -295,7 +301,8 @@ class Backend(object):
         return True
 
     def check_cd(self, cd_path, associated_task=None):
-        associated_task.description = _("Checking CD %s") % cd_path
+        if associated_task:
+            associated_task.description = ("Checking CD %s") % cd_path
         if not self.info.distro.is_valid_cd(cd_path, check_arch=False):
             return False
         self.set_distro_from_arch(cd_path)
@@ -305,7 +312,10 @@ class Backend(object):
         for rel_path in self.info.distro.get_required_files():
             if rel_path == self.info.distro.md5sums:
                 continue
-            check_file = associated_task.add_subtask(self.check_file)
+            if associated_task:
+                check_file = associated_task.add_subtask(self.check_file)
+            else:
+                check_file = self.check_file
             file_path = join_path(cd_path, rel_path)
             if not check_file(file_path, rel_path, md5sums_file):
                 return False
@@ -320,9 +330,12 @@ class Backend(object):
             return True
         hashsum = None
         if not self.info.distro.metalink:
-            get_metalink = associated_task.add_subtask(
-                self.get_metalink, description=_("Downloading information on installation files"))
-            get_metalink()
+            if associated_task:
+                get_metalink = associated_task.add_subtask(
+                    self.get_metalink, description=("Downloading information on installation files"))
+                get_metalink()
+            else:
+                self.get_metalink()
             if not self.info.distro.metalink:
                 log.error("ERROR: the metalink file is not available, cannot check the md5 for %s, ignoring" % iso_path)
                 return True
@@ -335,10 +348,13 @@ class Backend(object):
             return True
         hashsum2 = self.info.iso_md5_hashes.get(iso_path, None)
         if not hashsum2:
-            get_hash = associated_task.add_subtask(
-                get_file_hash,
-                description = _("Checking installation files") )
-            hashsum2 = get_hash(iso_path, hash_name)
+            if associated_task:
+                get_hash = associated_task.add_subtask(
+                    get_file_hash,
+                    description = ("Checking installation files") )
+                hashsum2 = get_hash(iso_path, hash_name)
+            else:
+                hashsum2 = get_file_hash(iso_path, hash_name)
             if not iso_path.startswith(self.info.install_dir):
                 self.info.iso_md5_hashes[iso_path] = hashsum2
         if hashsum != hashsum2:
@@ -358,7 +374,7 @@ class Backend(object):
             url.score = url.preference
             if self.info.country == url.location:
                 url.score += 50
-        urls.sort(cmp)
+        urls.sort(key=functools.cmp_to_key(cmp))
         return urls
 
     def cache_cd_path(self):
@@ -400,11 +416,12 @@ class Backend(object):
         if os.path.isfile(save_as):
             os.unlink(save_as)
         try:
-            download = associated_task.add_subtask(
-                downloader.download,
-                is_required = False)
-            self.dimage_path = download(diskimage, save_as,
-                    web_proxy=proxy)
+            if associated_task:
+                download = associated_task.add_subtask(
+                        downloader.download,
+                        is_required = False)
+                self.dimage_path = download(diskimage, save_as,
+                        web_proxy=proxy)
             return self.dimage_path is not None
         except Exception:
             log.exception('Cannot download disk image file %s:' % diskimage)
@@ -414,9 +431,12 @@ class Backend(object):
         log.debug("Could not find any ISO or CD, downloading one now")
         self.info.cd_path = None
         if not self.info.distro.metalink:
-            get_metalink = associated_task.add_subtask(
-                self.get_metalink, description=_("Downloading information on installation files"))
-            get_metalink()
+            if associated_task:
+                get_metalink = associated_task.add_subtask(
+                    self.get_metalink, description=("Downloading information on installation files"))
+                get_metalink()
+            else:
+                self.get_metalink()
             if not self.info.distro.metalink:
                 raise Exception("Cannot download the metalink and therefore the ISO")
         file = self.info.distro.metalink.files[0]
@@ -431,43 +451,57 @@ class Backend(object):
                         os.unlink(save_as)
                     except OSError:
                         logging.exception('Could not remove: %s' % save_as)
-                btdownload = associated_task.add_subtask(
-                    btdownloader.download,
-                    is_required = False)
-                iso_path = btdownload(url.url, save_as)
+                if associated_task:
+                    btdownload = associated_task.add_subtask(
+                        btdownloader.download,
+                        is_required = False)
+                    iso_path = btdownload(url.url, save_as)
+                else:
+                    iso_path = btdownloader.download(url.url, save_as)
             else:
                 if os.path.exists(save_as):
                     try:
                         os.unlink(save_as)
                     except OSError:
                         logging.exception('Could not remove: %s' % save_as)
-                download = associated_task.add_subtask(
-                    downloader.download,
-                    is_required = True)
-                iso_path = download(url.url, save_as, web_proxy=self.info.web_proxy)
-            if iso_path:
-                check_iso = associated_task.add_subtask(
-                    self.check_iso,
-                    description = _("Checking installation files"))
-                if check_iso(iso_path):
-                    self.info.iso_path = iso_path
-                    return True
+                if associated_task is not None:
+                    download = associated_task.add_subtask(
+                        downloader.download,
+                        is_required = True)
+                    iso_path = download(url.url, save_as, web_proxy=self.info.web_proxy)
                 else:
-                    os.unlink(iso_path)
+                    iso_path = downloader.download(url.url, save_as, web_proxy=self.info.web_proxy)
+            if iso_path:
+                if associated_task:
+                    check_iso = associated_task.add_subtask(
+                        self.check_iso,
+                        description = ("Checking installation files"))
+                    if check_iso(iso_path):
+                        self.info.iso_path = iso_path
+                        return True
+                    else:
+                        os.unlink(iso_path)
+                else:
+                    if self.check_iso(iso_path):
+                        self.info.iso_path = iso_path
+                        return True
+                    else:
+                        os.unlink(iso_path)
 
     def get_metalink(self, associated_task=None):
-        associated_task.description = _("Downloading information on installation files")
+        if associated_task:
+            associated_task.description = ("Downloading information on installation files")
         try:
             url = self.info.distro.metalink_url
             metalink = downloader.download(url, self.info.install_dir, web_proxy=self.info.web_proxy)
             base_url = os.path.dirname(url)
-        except Exception, err:
+        except Exception as err:
             log.error("Cannot download metalink file %s err=%s" % (url, err))
             try:
                 url = self.info.distro.metalink_url2
                 metalink = downloader.download(url, self.info.install_dir, web_proxy=self.info.web_proxy)
                 base_url = os.path.dirname(url)
-            except Exception, err:
+            except Exception as err:
                 log.error("Cannot download metalink file2 %s err=%s" % (url, err))
                 return
         metalink_filename, metalink_extension = os.path.splitext(metalink)
@@ -494,7 +528,7 @@ class Backend(object):
             log.debug("Trying to use pre-specified disk image %s" % self.info.dimage_path)
             is_valid_dimage = associated_task.add_subtask(
                 self.info.distro.is_valid_dimage,
-                description = _("Validating %s") % self.info.dimage_path)
+                description = ("Validating %s") % self.info.dimage_path)
             if is_valid_dimage(self.info.dimage_path, self.info.check_arch):
                 self.info.cd_path = None
                 return True
@@ -507,7 +541,7 @@ class Backend(object):
             log.debug("Trying to use pre-specified ISO %s" % self.info.iso_path)
             is_valid_iso = associated_task.add_subtask(
                 self.info.distro.is_valid_iso,
-                description = _("Validating %s") % self.info.iso_path)
+                description = ("Validating %s") % self.info.iso_path)
             if is_valid_iso(self.info.iso_path, self.info.check_arch):
                 self.info.cd_path = None
             return self.copy_iso(self.info.iso_path, associated_task)
@@ -536,7 +570,7 @@ class Backend(object):
         dest = os.path.join(self.info.disks_dir, dimage_name)
         copy_dimage = associated_task.add_subtask(
             copy_file,
-            description = _("Copying installation files"))
+            description = ("Copying installation files"))
         log.debug("Copying %s > %s" % (dimage_path, dest))
         copy_dimage(dimage_path, dest)
         return True
@@ -547,18 +581,18 @@ class Backend(object):
         dest = join_path(self.info.install_dir, "installation.iso")
         check_iso = associated_task.add_subtask(
             self.check_iso,
-            description = _("Checking installation files"))
+            description = ("Checking installation files"))
         if check_iso(iso_path):
             if os.path.dirname(iso_path) == dest:
                 move_iso = associated_task.add_subtask(
                     shutil.move,
-                    description = _("Copying installation files"))
+                    description = ("Copying installation files"))
                 log.debug("Moving %s > %s" % (iso_path, dest))
                 move_iso(iso_path, dest)
             else:
                 copy_iso = associated_task.add_subtask(
                     copy_file,
-                    description = _("Copying installation files"))
+                    description = ("Copying installation files"))
                 log.debug("Copying %s > %s" % (iso_path, dest))
                 copy_iso(iso_path, dest)
             self.info.cd_path = None
@@ -569,11 +603,11 @@ class Backend(object):
         if self.cd_path:
             extract_iso = associated_task.add_subtask(
                 copy_file,
-                description = _("Extracting files from %s") % self.cd_path)
+                description = ("Extracting files from %s") % self.cd_path)
             self.info.iso_path = join_path(self.info.install_dir, "installation.iso")
             try:
                 extract_iso(self.cd_path, self.info.iso_path)
-            except Exception, err:
+            except Exception as err:
                 log.error(err)
                 self.info.cd_path = None
                 self.info.iso_path = None
@@ -582,7 +616,7 @@ class Backend(object):
             #This will often fail before release as the CD might not match the latest daily ISO
             check_iso = associated_task.add_subtask(
                 self.check_iso,
-                description = _("Checking installation files"))
+                description = ("Checking installation files"))
             if not check_iso(self.info.iso_path):
                 subversion = self.info.cd_distro.get_info(self.info.cd_path)[2]
                 if subversion.lower() in ("alpha", "beta", "release candidate"):
@@ -603,14 +637,17 @@ class Backend(object):
         Get a diskimage either locally or from the mirror
         '''
         if self.get_prespecified_diskimage(associated_task):
-            return associated_task.finish()
+            if associated_task:
+                return associated_task.finish()
         dimage = self.info.distro.diskimage
         if self.download_diskimage(dimage, associated_task):
-            return associated_task.finish()
+            if associated_task:
+                return associated_task.finish()
         else:
             dimage2 = self.info.distro.diskimage2
             if self.download_diskimage(dimage2, associated_task):
-                return associated_task.finish()
+                if associated_task:
+                    return associated_task.finish()
 
         raise Exception("Could not retrieve the required disk image files")
 
@@ -619,7 +656,8 @@ class Backend(object):
         or self.use_cd(associated_task) \
         or self.use_iso(associated_task) \
         or self.download_iso(associated_task):
-            return associated_task.finish()
+            if associated_task:
+                return associated_task.finish()
         raise Exception("Could not retrieve the required installation files")
 
     def extract_kernel(self):
@@ -654,7 +692,7 @@ class Backend(object):
     def check_file(self, file_path, relpath, md5sums, associated_task=None):
         log.debug("  checking %s" % file_path)
         if associated_task:
-            associated_task.description = _("Checking %s") % file_path
+            associated_task.description = ("Checking %s") % file_path
         relpath = relpath.replace("\\", "/")
         md5line = find_line_in_file(md5sums, "./%s" % relpath, endswith=True)
         if not md5line:
@@ -683,7 +721,7 @@ class Backend(object):
             locale = self.info.locale,
             user_full_name = self.info.user_full_name,
             username = self.info.username)
-        for k,v in dic.items():
+        for k,v in list(dic.items()):
             k = "$(%s)" % k
             template = template.replace(k, v)
         preseed_file = join_path(self.info.install_dir, "preseed.cfg")
@@ -703,6 +741,8 @@ class Backend(object):
         if not os.path.exists(template_file):
             template_file = join_path(self.info.data_dir, 'preseed.lupin')
         template = read_file(template_file)
+        if not template:
+            raise Exception("Could not read preseed template file: %s" % template_file)
         if self.info.distro.packages:
             distro_packages_skip = ''
         else:
@@ -744,7 +784,7 @@ class Backend(object):
             host_os_name = host_os_name,
             custom_installation_dir = unix_path(self.info.custominstall),)
         content = template
-        for k,v in dic.items():
+        for k,v in list(dic.items()):
             k = "$(%s)" % k
             content = content.replace(k, v)
         preseed_file = join_path(self.info.custominstall, "preseed.cfg")
@@ -754,9 +794,104 @@ class Backend(object):
         #platform specific
         pass
 
+    def select_target_dir(self, associated_task=None):
+        """Platform specific method"""
+        pass
+
+    def create_uninstaller(self, associated_task=None):
+        """Platform specific method"""
+        pass
+
+    def extract_diskimage(self, associated_task=None):
+        """Platform specific method"""
+        pass
+
+    def choose_disk_sizes(self, associated_task=None):
+        """Platform specific method"""
+        pass
+
+    def expand_diskimage(self, associated_task=None):
+        """Platform specific method"""
+        pass
+
+    def create_swap_diskimage(self, associated_task=None):
+        """Platform specific method"""
+        pass
+
+    def diskimage_bootloader(self, associated_task=None):
+        """Platform specific method"""
+        pass
+
+    def uncompress_target_dir(self, associated_task=None):
+        """Platform specific method"""
+        pass
+
+    def copy_installation_files(self, associated_task=None):
+        """Platform specific method"""
+        pass
+
+    def create_virtual_disks(self, associated_task=None):
+        """Platform specific method"""
+        pass
+
+    def uncompress_files(self, associated_task=None):
+        """Platform specific method"""
+        pass
+
+    def eject_cd(self, associated_task=None):
+        """Platform specific method"""
+        pass
+
+    def reboot(self, associated_task=None):
+        """Platform specific method"""
+        pass
+
+    def undo_bootloader(self, associated_task=None):
+        """Platform specific method"""
+        pass
+
+    def remove_registry_key(self, associated_task=None):
+        """Platform specific method"""
+        pass
+
+    def get_uninstaller_path(self):
+        """Platform specific method"""
+        return None
+
+    def get_previous_target_dir(self):
+        """Platform specific method"""
+        return None
+
+    def get_previous_distro_name(self):
+        """Platform specific method"""
+        return None
+
+    def get_keyboard_layout(self):
+        """Platform specific method"""
+        return None, None
+
+    def get_total_memory_mb(self):
+        """Platform specific method"""
+        return 0
+
+    def get_iso_search_paths(self):
+        """Platform specific method"""
+        return []
+
+    def get_cd_search_paths(self):
+        """Platform specific method"""
+        return []
+
+    def extract_file_from_iso(self, iso_path, file_path, output_dir=None):
+        """Platform specific method"""
+        pass
+
     def modify_grub_configuration(self):
         template_file = join_path(self.info.data_dir, 'grub.install.cfg')
         template = read_file(template_file)
+        if template is None:
+            raise Exception("Could not read grub template file: %s" % template_file)
+
         if self.info.run_task == "cd_boot":
             isopath = ""
         ## TBD at the moment we are extracting the ISO, not the CD content
@@ -787,7 +922,7 @@ class Backend(object):
             demo_mode_title =  "Demo mode",
             )
         content = template
-        for k,v in dic.items():
+        for k,v in list(dic.items()):
             k = "$(%s)" % k
             content = content.replace(k, v)
         if self.info.run_task == "cd_boot":
@@ -803,12 +938,12 @@ class Backend(object):
         log.debug("Deleting %s" % self.info.previous_target_dir)
         try:
             rm_tree(self.info.previous_target_dir)
-        except OSError, e:
+        except OSError as e:
             if e.errno == 22:
                 log.exception('Unable to remove the target directory.')
                 # Invalid argument - likely a corrupt file.
                 cmd = spawn_command(['chkdsk', '/F'])
-                cmd.communicate(input='Y%s' % os.linesep)
+                cmd.communicate(input=('Y%s' % os.linesep).encode())
                 raise errors.WubiCorruptionError
 
     def find_iso(self, associated_task=None):
@@ -866,7 +1001,7 @@ class Backend(object):
 
     def parse_isolist(self, isolist_path):
         log.debug('Parsing isolist=%s' % isolist_path)
-        isolist = ConfigParser.ConfigParser()
+        isolist = configparser.ConfigParser()
         isolist.read(isolist_path)
         distros = []
         for distro in isolist.sections():
@@ -882,7 +1017,7 @@ class Backend(object):
                 return 1
             else:
                 return -1
-        distros.sort(compfunc)
+        distros.sort(key=functools.cmp_to_key(compfunc))
         return distros
 
     def run_previous_uninstaller(self):
@@ -910,9 +1045,9 @@ class Backend(object):
             log.info("This is the uninstaller running")
         else:
             log.info("Launching previous uninestaller %s" % uninstaller)
-            subprocess.call(command)
+            process = subprocess.Popen(command)
             # Note: the uninstaller is now non-blocking so we can just as well quit this running version
-            # TBD: make this call synchronous by waiting for the children process of the uninstaller
+            # Make this call synchronous by waiting for the children process of the uninstaller
+            process.wait()
             self.application.quit()
             return True
-

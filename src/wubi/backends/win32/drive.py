@@ -19,7 +19,6 @@
 #
 
 import ctypes
-import ctypes.wintypes
 import logging
 log = logging.getLogger("WindowsDrive")
 
@@ -36,7 +35,7 @@ class Drive(object):
         drive_path = letter.upper()
         if not drive_path.endswith(':'): drive_path += ':'
         self.path = drive_path
-        self.type_n = ctypes.windll.kernel32.GetDriveTypeW(unicode(drive_path))
+        self.type_n = ctypes.windll.kernel32.GetDriveTypeW(str(drive_path))
         self.type = [None, None, 'removable', 'hd', 'remote', 'cd', 'ram'][self.type_n] #TBD USB??
         if self.path == 'A:' and self.type == 'removable':
             self.type = None #skip floppy: TBD do something reasonble
@@ -55,7 +54,7 @@ class Drive(object):
             return ""
         filesystem = ""
         path = self.path[0] + ':\\'
-        buf = ctypes.create_string_buffer("", MAX_PATH)
+        buf = ctypes.create_string_buffer(MAX_PATH)
         ctypes.windll.kernel32.GetVolumeInformationA(path, None, 0, None, None, None, buf, len(buf))
         if isinstance(buf.value, str):
             filesystem = buf.value.lower()
@@ -67,7 +66,7 @@ class Drive(object):
         total = ctypes.c_int64()
         free = ctypes.c_int64()
         ctypes.windll.kernel32.GetDiskFreeSpaceExW(
-                unicode(drive_path),
+                str(drive_path),
                 ctypes.byref(freeuser),
                 ctypes.byref(total),
                 ctypes.byref(free))

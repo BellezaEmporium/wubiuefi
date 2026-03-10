@@ -5,7 +5,7 @@
 # This file is part of Wubi the Win32 Ubuntu Installer.
 #
 # Wubi is free software; you can redistribute it and/or modify
-# it under 5the terms of the GNU Lesser General Public License as
+# it under the terms of the GNU Lesser General Public License as
 # published by the Free Software Foundation; either version 2.1 of
 # the License, or (at your option) any later version.
 #
@@ -19,25 +19,33 @@
 #
 
 '''
-Check sinature using openpgp and python-crypto
+Check signature using openpgp and pgpy
 '''
 
 import os
-from utils import read_file
-
-from openpgp.sap.api import verify_str
-#explicit imports required by pylauncher
-import openpgp.sap.pkt.PublicKey
-import openpgp.sap.pkt.UserID
-import openpgp.sap.pkt.Trust
+from .utils import read_file
+import pgpy
 
 def verify_gpg_signature(detached_file, signature_file, key_file):
-    signature = read_file(signature_file, binary=True)
-    #not generic but ok if the signature is generated in linux
-    #this is to avoid the signature to be misinterpreted when parsed in another OS
-    signature = signature.replace('\n', os.linesep)
-    key = read_file(key_file, binary=True)
+    signature_data = read_file(signature_file, binary=True)
+    if signature_data is None:
+        return False
+    
+    key_data = read_file(key_file, binary=True)
+    if key_data is None:
+        return False
+    
     message = read_file(detached_file, binary=True)
-    result = verify_str(signature, key, detached=message)
-    return result == message
-
+    if message is None:
+        return False
+    
+    try:
+        key = pgpy.PGPKey()
+        key.parse(key_data)
+        
+        signature = pgpy.PGPSignature()
+        signature.parse(signature_data)
+        
+        return key.verify(message, signature)
+    except Exception:
+        return False

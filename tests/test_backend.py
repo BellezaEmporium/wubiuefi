@@ -1,30 +1,37 @@
 # tools/pywine -O tests/test_backend.py
 import unittest
 import sys, os
-sys.path.insert(0, 'build\\wubi\\lib')
+import tempfile
+import shutil
 from wubi.backends.win32 import backend
 from version import application_name, version, revision
 from wubi import application
 
-import mock
+try:
+    from unittest import mock
+except ImportError:
+    import mock
 from wubi.backends.win32 import registry
 class BackendTests(unittest.TestCase):
     def setUp(self):
+        root_dir = os.getcwd()
         w = application.Wubi(application_name, version,
-                             revision, 'build\\wubi')
+                             revision, root_dir)
         # To get things like info.locale set.
         w.parse_commandline_arguments()
         self.back = backend.WindowsBackend(w)
+        self.back.info.iso_extractor = os.path.join(root_dir, 'build', 'bin', '7z.exe')
         w.info.original_exe = os.path.join(os.getcwd(), 'build', 'wubi.exe')
+        self.temp_target_dir = tempfile.mkdtemp(prefix='wubi-test-')
 
         # Data
         self.uninstall_keys = [
             ('HKEY_LOCAL_MACHINE', 'registry-key', 'UninstallString',
-             'Z:\\tmp\\uninstall-wubi.exe'),
-            ('HKEY_LOCAL_MACHINE', 'registry-key', 'InstallationDir', '/tmp'),
+             os.path.join(self.temp_target_dir, 'uninstall-wubi.exe')),
+            ('HKEY_LOCAL_MACHINE', 'registry-key', 'InstallationDir', self.temp_target_dir),
             ('HKEY_LOCAL_MACHINE', 'registry-key', 'DisplayName', 'Ubuntu'),
             ('HKEY_LOCAL_MACHINE', 'registry-key', 'DisplayIcon',
-             os.path.join(os.getcwd(), 'build\\wubi\\data\\images\\Wubi.ico')),
+             os.path.join(os.getcwd(), 'data\\images\\Wubi.ico')),
             ('HKEY_LOCAL_MACHINE', 'registry-key', 'DisplayVersion',
              self.back.info.version_revision),
             ('HKEY_LOCAL_MACHINE', 'registry-key', 'Publisher', 'Ubuntu'),
@@ -40,14 +47,15 @@ class BackendTests(unittest.TestCase):
     
     def tearDown(self):
         registry.set_value = self.save_registry
+        shutil.rmtree(self.temp_target_dir, ignore_errors=True)
 
     def test_create_uninstaller(self):
         # We don't have decorators in Python 2.3, so we can't use mock.patch
         # here.
-        self.back.info.target_dir = '/tmp'
+        self.back.info.target_dir = self.temp_target_dir
         self.back.info.registry_key = 'registry-key'
         self.back.info.distro = self.back.parse_isolist(
-                                    'build/wubi/data/isolist.ini')[0]
+                                    'data/isolist.ini')[0]
         self.back.create_uninstaller(None)
         calls = registry.set_value.call_args_list
         remove = []
@@ -58,12 +66,12 @@ class BackendTests(unittest.TestCase):
                 self.fail('Did not expect key to be set: %s' % str(c[0]))
         for r in remove:
             calls.remove(r)
-        self.assert_(len(calls) == 0,
+        self.assertTrue(len(calls) == 0,
             'Did not set required registry keys:\n%s' % str(calls))
         # TODO mktempd
-        self.assert_(os.path.exists('/tmp/uninstall-wubi.exe'),
+        self.assertTrue(os.path.exists(os.path.join(self.temp_target_dir, 'uninstall-wubi.exe')),
             'Did not install uninstaller binary.')
-        os.remove('/tmp/uninstall-wubi.exe')
+        os.remove(os.path.join(self.temp_target_dir, 'uninstall-wubi.exe'))
 
     def test_get_iso_file(self):
         # http://pad.lv/856340

@@ -1,74 +1,55 @@
 #!/bin/sh
 
-# Tout s'exécute dans WSL
-WSL="wsl -u root --"
-
 shim_signed_url="http://archive.ubuntu.com/ubuntu/pool/main/s/shim-signed/shim-signed_1.59+15.8-0ubuntu2_amd64.deb"
 shim_url="http://archive.ubuntu.com/ubuntu/pool/main/s/shim/shim_15.8-0ubuntu2_amd64.deb"
 shim_blacklist_md5="a1fe8e36277b45ceeeabc5ce38df57bd"
 
 # Détecter le gestionnaire de paquets dans WSL
-if $WSL command -v apt > /dev/null 2>&1; then
+if command -v apt > /dev/null 2>&1; then
     PKG_INSTALL="apt install -y"
-elif $WSL command -v apt-get > /dev/null 2>&1; then
+elif command -v apt-get > /dev/null 2>&1; then
     PKG_INSTALL="apt-get install -y"
-elif $WSL command -v dnf > /dev/null 2>&1; then
+elif command -v dnf > /dev/null 2>&1; then
     PKG_INSTALL="dnf install -y"
-elif $WSL command -v pacman > /dev/null 2>&1; then
+elif command -v pacman > /dev/null 2>&1; then
     PKG_INSTALL="pacman -S --noconfirm"
 else
-    echo "Error: No supported package manager found in WSL"
+    echo "Error: No supported package manager found"
     exit 1
 fi
 
-if ! $WSL test -e /usr/lib/grub/i386-pc/moddep.lst; then
+test -e /usr/lib/grub/i386-pc/moddep.lst || {
     echo "Installing grub-pc-bin"
-    $WSL $PKG_INSTALL grub-pc-bin
-fi
-if ! $WSL test -e /usr/lib/grub/x86_64-efi/moddep.lst; then
+    $PKG_INSTALL grub-pc-bin
+}
+test -e /usr/lib/grub/x86_64-efi/moddep.lst || {
     echo "Installing grub-efi-amd64-bin"
-    $WSL $PKG_INSTALL grub-efi-amd64-bin
-fi
-if ! $WSL test -e /usr/lib/grub/i386-efi/moddep.lst; then
+    $PKG_INSTALL grub-efi-amd64-bin
+}
+test -e /usr/lib/grub/i386-efi/moddep.lst || {
     echo "Installing grub-efi-ia32-bin"
-    $WSL $PKG_INSTALL grub-efi-ia32-bin
-fi
-if ! $WSL test -e /usr/lib/shim/shim.efi.signed && ! $WSL test -e /usr/lib/shim/shimx64.efi.signed; then
+    $PKG_INSTALL grub-efi-ia32-bin
+}
+test -e /usr/lib/shim/shim.efi.signed -o -e /usr/lib/shim/shimx64.efi.signed || {
     echo "Installing shim-signed..."
-    $WSL $PKG_INSTALL shim-signed
-fi
-if $WSL test -e /usr/lib/shim/shimx64.efi.signed; then
-    INSTALLED_MD5=$($WSL md5sum /usr/lib/shim/shimx64.efi.signed | cut -d ' ' -f 1)
-    if [ "$INSTALLED_MD5" = "$shim_blacklist_md5" ] && \
-       ([ ! -e shim/shimx64.efi.signed ] || [ ! -e shim/mmx64.efi ]); then
-        echo "Installed shim is blacklisted, downloading new version..."
-        mkdir -p shim
-        $WSL wget "$shim_signed_url" -O /tmp/shim-signed.deb
-        $WSL dpkg -x /tmp/shim-signed.deb /tmp/shim
-        $WSL wget "$shim_url" -O /tmp/shim.deb
-        $WSL sh -c "ar p /tmp/shim.deb data.tar.xz | tar xJf - -C /tmp/shim"
-        $WSL cp /tmp/shim/usr/lib/shim/shimx64.efi.signed shim/.
-        $WSL cp /tmp/shim/usr/lib/shim/mmx64.efi shim/.
-    fi
-fi
-if ! $WSL test -e /usr/bin/sbsign; then
+    $PKG_INSTALL shim-signed
+}
+test -e /usr/bin/sbsign || {
     echo "Installing sbsigntool..."
-    $WSL $PKG_INSTALL sbsigntool
-fi
-if ! $WSL test -e /usr/bin/openssl; then
+    $PKG_INSTALL sbsigntool
+}
+test -e /usr/bin/openssl || {
     echo "Installing openssl..."
-    $WSL $PKG_INSTALL openssl
-fi
-if [ ! -e .key ]; then
+    $PKG_INSTALL openssl
+}
+test -e .key || {
     echo "Generating new Secure Boot key..."
     mkdir -p .key
     USER=$(whoami)
-    $WSL openssl req -new -x509 -newkey rsa:2048 \
-        -keyout "/mnt/d/GH Repos/wubiuefi/.key/${USER}_wubi.key" \
-        -out "/mnt/d/GH Repos/wubiuefi/.key/${USER}_wubi.crt" \
+    openssl req -new -x509 -newkey rsa:2048 \
+        -keyout ".key/${USER}_wubi.key" \
+        -out ".key/${USER}_wubi.crt" \
         -nodes -days 3650 -subj "/CN=${USER} Wubi/"
-    $WSL openssl x509 \
-        -in "/mnt/d/GH Repos/wubiuefi/.key/${USER}_wubi.crt" \
-        -out "/mnt/d/GH Repos/wubiuefi/.key/${USER}_wubi.cer" \
-        -outform DER
-fi
+    openssl x509 -in ".key/${USER}_wubi.crt" \
+        -out ".key/${USER}_wubi.cer" -outform DER
+}

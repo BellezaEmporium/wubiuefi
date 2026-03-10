@@ -434,7 +434,7 @@ n2language = {
     1058 : "uk", # Ukrainian
 }
 
-language2n = dict([(v,k) for k,v in n2language.items()])
+language2n = dict([(v,k) for k,v in list(n2language.items())])
 
 n2fulllanguage = {
     1052 : "Albanian",

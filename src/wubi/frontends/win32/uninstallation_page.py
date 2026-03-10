@@ -19,7 +19,7 @@
 #
 
 from winui import ui
-from page import Page
+from .page import Page
 import logging
 log = logging.getLogger("WinuiInstallationPage")
 
@@ -27,29 +27,29 @@ class UninstallationPage(Page):
 
     def on_init(self):
         Page.on_init(self)
-        self.frontend.set_title(_("%s Uninstaller") % self.info.previous_distro_name)
+        self.frontend.set_title("%s Uninstaller" % self.info.previous_distro_name)
 
         #header
         if self.info.uninstall_before_install:
-            msg = _("Uninstallation required")
+            msg = "Uninstallation required"
         else:
-            msg = _("You are about to uninstall %s") % self.info.previous_distro_name
+            msg = "You are about to uninstall %s" % self.info.previous_distro_name
         self.insert_header(
             msg,
             "",
             "%s-header.bmp" % self.info.previous_distro_name)
 
         #navigation
-        self.insert_navigation(_("Uninstall"), _("Cancel"), default=2)
+        self.insert_navigation("Uninstall", "Cancel", default=2)
         self.navigation.button2.on_click = self.on_cancel
         self.navigation.button1.on_click = self.on_uninstall
 
         #Main control container
         self.insert_main()
         if self.info.uninstall_before_install:
-            msg = _("A previous installation was detected, it needs to be uninstalled before continuing")
+            msg = "A previous installation was detected, it needs to be uninstalled before continuing"
         else:
-            msg = _("Are you sure you want to uninstall?")
+            msg = "Are you sure you want to uninstall?"
 
         self.uninstall_label = ui.Label(
             self.main,

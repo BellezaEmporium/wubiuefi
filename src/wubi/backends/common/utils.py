@@ -76,12 +76,14 @@ def run_nonblocking_command(command, show_window=False):
 
 def md5_password(password):
     # From http://mail.python.org/pipermail/python-list/2003-March/195202.html
+    if isinstance(password, str):
+        password = password.encode('utf-8')
     salt_chars = './abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-    salt = ''.join([random.choice(salt_chars) for i in range(5)])
+    salt = ''.join([random.choice(salt_chars) for i in range(5)]).encode('utf-8')
 
     hash = hashlib.md5()
     hash.update(password)
-    hash.update('$1$')
+    hash.update(b'$1$')
     hash.update(salt)
 
     second_hash = hashlib.md5()
@@ -98,14 +100,14 @@ def md5_password(password):
     i = len(password)
     while i > 0:
         if i & 1:
-            hash.update('\0')
+            hash.update(b'\0')
         else:
-            hash.update(password[0])
+            hash.update(password[0:1])
         i >>= 1
 
     hash = hash.digest()
 
-    for i in xrange(1000):
+    for i in range(1000):
         nth_hash = hashlib.md5()
         if i % 2:
             nth_hash.update(password)
@@ -126,7 +128,7 @@ def md5_password(password):
         'ABCDEFGHIJKLMNOPQRSTUVWXYZ' \
         'abcdefghijklmnopqrstuvwxyz'
     def b64_three_char(char2, char1, char0, n):
-        byte2, byte1, byte0 = map(ord, [char2, char1, char0])
+        byte2, byte1, byte0 = (c if isinstance(c, int) else ord(c) for c in [char2, char1, char0])
         w = (byte2 << 16) | (byte1 << 8) | byte0
         s = []
         for _ in range(n):
@@ -154,7 +156,7 @@ def get_file_hash(file_path, hash_name='md5', associated_task=None):
     file = open(file_path, "rb")
     hash = hashlib.new(hash_name)
     data_read = 0
-    for i in range(file_size + 1):
+    for i in range(int(file_size) + 1):
         data = file.read(1024**2)
         data_read += 1
         if data == "":
@@ -176,7 +178,7 @@ def get_drive_space(drive_path):
     total = ctypes.c_int64()
     free = ctypes.c_int64()
     ctypes.windll.kernel32.GetDiskFreeSpaceExW(
-            unicode(drive_path),
+            str(drive_path),
             ctypes.byref(freeuser),
             ctypes.byref(total),
             ctypes.byref(free))
@@ -252,7 +254,7 @@ def replace_line_in_file(file_path, old_line, new_line):
             lines[i] = new_line
     try:
         f.writelines(lines)
-    except Exception, err:
+    except Exception as err:
         log.exception(err)
     f.close()
 
