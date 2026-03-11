@@ -76,8 +76,7 @@ class WindowsBackend(Backend):
 
     def select_target_dir(self):
         target_dir = join_path(self.info.target_drive.path, self.info.distro.installation_dir)
-        target_dir.replace(' ', '_')
-        target_dir.replace('__', '_')
+        target_dir = target_dir.replace(' ', '_').replace('__', '_')
         if os.path.exists(target_dir):
             raise Exception("Cannot install into %s.\nThere is another file or directory with this name.\nPlease remove it before continuing." % target_dir)
         self.info.target_dir = target_dir
@@ -109,8 +108,7 @@ class WindowsBackend(Backend):
 
     def create_uninstaller(self, associated_task):
         uninstaller_name = 'uninstall-%s.exe'  % self.info.application_name
-        uninstaller_name.replace(' ', '_')
-        uninstaller_name.replace('__', '_')
+        uninstaller_name = uninstaller_name.replace(' ', '_').replace('__', '_')
         uninstaller_path = join_path(self.info.target_dir, uninstaller_name)
         if os.path.splitext(self.info.original_exe)[-1] == '.exe':
             log.debug('Copying uninstaller %s -> %s' % (self.info.original_exe, uninstaller_path))
@@ -340,21 +338,21 @@ class WindowsBackend(Backend):
         return registry_key
 
     def get_windows_language_code(self):
-        #~ windows_language_code = registry.get_value(
-                #~ 'HKEY_CURRENT_USER',
-                #~ '\\Control Panel\\International',
-                #~ 'sLanguage')
-        windows_language_code = mappings.language2n.get(self.info.language[:2])
+        lang = (self.info.language or "")[:2]
+        language2n = getattr(mappings, "language2n", {})
+        windows_language_code = language2n.get(lang)
         log.debug('windows_language_code=%s' % windows_language_code)
         if not windows_language_code:
             windows_language_code = 1033 #English
         return windows_language_code
 
     def get_windows_language(self):
-        windows_language = mappings.n2fulllanguage.get(self.info.windows_language_code)
-        log.debug('windows_language=%s' % windows_language)
+        lang = (self.info.language or "")[:2]
+        language2name = getattr(mappings, "language2name", {})
+        windows_language = language2name.get(lang)
         if not windows_language:
-            windows_language = 'English'
+            windows_language = "English"
+        log.debug('windows_language=%s' % windows_language)
         return windows_language
 
     def get_total_memory_mb(self):

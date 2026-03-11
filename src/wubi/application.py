@@ -2,7 +2,8 @@ import os
 import sys
 import tempfile
 import logging
-from optparse import OptionParser
+import traceback
+from argparse import ArgumentParser
 from gettext import gettext as _
 
 from wubi import errors
@@ -11,6 +12,9 @@ from version import application_name, version, revision
 log = logging.getLogger("application")
 
 
+# ──────────────────────────────────────────────
+# Info
+# ──────────────────────────────────────────────
 class Info(object):
     _ALIASES = {
         "root_dir": "rootdir",
@@ -66,7 +70,8 @@ class Info(object):
     _alias_reverse = {}
 
     def __init__(self):
-        object.__setattr__(self, "_alias_reverse", dict((v, k) for k, v in self._ALIASES.items()))
+        object.__setattr__(self, "_alias_reverse",
+                           {v: k for k, v in self._ALIASES.items()})
 
         self.root_dir = None
         self.temp_dir = None
@@ -84,16 +89,16 @@ class Info(object):
         self.version = None
         self.revision = None
         self.application_name = None
-        self.version_revision: str | None = None
-        self.full_application_name: str | None = None
-        self.full_version: str | None = None
+        self.version_revision = None
+        self.full_application_name = None
+        self.full_version = None
 
-        self.log_file: str | None = None
+        self.log_file = None
         self.original_exe = None
         self.use_frontend = None
-        self.verbosity: str | None = None
+        self.verbosity = None
 
-        self.run_task: str | None = None
+        self.run_task = None
         self.cd_path = None
         self.iso_path = None
         self.disk_image_path = None
@@ -171,13 +176,10 @@ class Info(object):
 
     def __setattr__(self, name, value):
         object.__setattr__(self, name, value)
-
         alias = self._ALIASES.get(name)
         if alias and getattr(self, alias, None) != value:
             object.__setattr__(self, alias, value)
-
-        alias_reverse = getattr(self, "_alias_reverse", {})
-        canonical = alias_reverse.get(name)
+        canonical = getattr(self, "_alias_reverse", {}).get(name)
         if canonical and getattr(self, canonical, None) != value:
             object.__setattr__(self, canonical, value)
 
@@ -189,28 +191,26 @@ class Info(object):
         return "Info(%s)" % self.__dict__
 
 
+# ──────────────────────────────────────────────
+# Wubi
+# ──────────────────────────────────────────────
 class Wubi(object):
+
     def __init__(self, application_name, version, revision, root_dir):
         self.frontend = None
-        self.backend = None
-        self.info = Info()
+        self.backend  = None
+        self.info     = Info()
 
-        self.info.root_dir = root_dir
-        self.info.force_exit = False
-        self.info.version = version
-        self.info.revision = revision
-        self.info.application_name = application_name
-        self.info.version_revision = "%s-rev%s" % (self.info.version, self.info.revision)
-        self.info.full_application_name = "%s-%s-rev%s" % (
-            self.info.application_name,
-            self.info.version,
-            self.info.revision,
-        )
-        self.info.full_version = "%s %s rev%s" % (
-            self.info.application_name,
-            self.info.version,
-            self.info.revision,
-        )
+        self.info.root_dir          = root_dir
+        self.info.force_exit        = False
+        self.info.version           = version
+        self.info.revision          = revision
+        self.info.application_name  = application_name
+        self.info.version_revision  = "%s-rev%s" % (version, revision)
+        self.info.full_application_name = "%s-%s-rev%s" % (application_name, version, revision)
+        self.info.full_version      = "%s %s rev%s" % (application_name, version, revision)
+
+    # ── Entry point ──────────────────────────
 
     def run(self):
         self.info.quitting = False
@@ -218,49 +218,64 @@ class Wubi(object):
             self.parse_commandline_arguments()
             self.set_logger()
             log.info(self.info.full_version)
-            log.debug("Logfile is %s", self.info.log_file)
             log.debug("sys.argv=%s", sys.argv)
+            log.debug("Logfile: %s", self.info.log_file)
 
             self.backend = self.get_backend()
-            self._backend_call(("remove_existing_binary", "removeexistingbinary"))
-            self._backend_call(("fetch_basic_info", "fetchbasicinfo"))
+            self.backend.remove_existing_binary()
+            self.backend.fetch_basic_info()
             self.select_task()
 
-        except Exception as err:
-            if self.info.quitting:
-                log.info("Quitting application")
+        except errors.QuitException:
+            log.info("Quitting application (QuitException)")
+
+        except Exception:
+            log.error("Unhandled exception:\n%s", traceback.format_exc())
+            self._show_fatal_error()
+
+        finally:
+            self.on_quit()
+
+    def _show_fatal_error(self):
+        msg = _(
+            "A fatal error occurred.\n\nPlease check the log file for details:\n%s"
+        ) % self.info.log_file
+
+        if self.frontend:
+            try:
+                self.frontend.show_error_message(msg)
                 return
+            except Exception:
+                pass
 
-            log.exception(err)
+        try:
+            import tkinter as tk
+            from tkinter import messagebox
+            _root = tk.Tk()
+            _root.withdraw()
+            messagebox.showerror(self.info.application_name or "Wubi", msg)
+            _root.destroy()
+        except Exception:
+            print(msg, file=sys.stderr)
 
-            if self.frontend:
-                error_messages = " ".join(str(e) for e in err.args if e is not None).strip()
-                if not error_messages:
-                    error_messages = str(err)
-
-                message = _(
-                    "An error occurred:\n\n%(error)s\n\nFor more information, please see the log file:\n%(log)s"
-                ) % {
-                    "error": error_messages,
-                    "log": self.info.log_file,
-                }
-                self._frontend_call(("show_error_message", "showerrormessage"), message)
-            return
+    # ── Lifecycle ────────────────────────────
 
     def quit(self):
         log.debug("application.quit")
-        if self.frontend and callable(getattr(self.frontend, "quit", None)):
-            self.frontend.quit()
-        else:
-            self.on_quit()
+        self.info.quitting = True
+        if self.frontend:
+            try:
+                self.frontend.quit()
+            except Exception:
+                pass
 
     def on_quit(self):
         log.debug("application.on_quit")
-        self.info.quitting = True
         if self.info.force_exit:
-            log.debug("Forceful exit")
-            log.info("sys.exit")
+            log.info("Forceful exit via sys.exit")
             sys.exit(0)
+
+    # ── Factory backend / frontend ───────────────
 
     def get_backend(self):
         from wubi.backends.win32 import WindowsBackend
@@ -269,277 +284,215 @@ class Wubi(object):
     def get_frontend(self):
         if self.frontend:
             return self.frontend
-
-        if self.info.use_frontend and self.info.use_frontend != "win32":
-            raise NotImplementedError()
-
-        from wubi.frontends.win32 import WindowsFrontend
-        self.frontend = WindowsFrontend(self)
+        from wubi.frontends.tkinter.frontend import TkFrontend
+        self.frontend = TkFrontend(self)
         return self.frontend
 
-    def _frontend_call(self, method_names, *args):
-        for name in method_names:
-            func = getattr(self.frontend, name, None)
-            if callable(func):
-                return func(*args)
-        raise AttributeError("Frontend method not found: %s" % ", ".join(method_names))
-
-    def _backend_call(self, method_names, *args):
-        for name in method_names:
-            func = getattr(self.backend, name, None)
-            if callable(func):
-                return func(*args)
-        raise AttributeError("Backend method not found: %s" % ", ".join(method_names))
+    # ── Task routing ───────────────────────
 
     def select_task(self):
-        run_task = self.info.run_task
-
-        if run_task == "install":
-            self.run_installer()
-        elif run_task in ("cd_boot", "cdboot"):
-            self.run_cdboot()
-        elif run_task == "uninstall":
-            self.run_uninstaller()
-        elif run_task in ("show_info", "showinfo"):
-            self.show_info()
-        elif run_task == "reboot":
-            self.reboot()
-        elif self.info.cd_path or run_task in ("cd_menu", "cdmenu"):
+        task = self.info.run_task
+        dispatch = {
+            "install":   self.run_installer,
+            "cd_boot":   self.run_cdboot,
+            "cdboot":    self.run_cdboot,
+            "uninstall": self.run_uninstaller,
+            "show_info": self.show_info,
+            "showinfo":  self.show_info,
+            "reboot":    self.reboot,
+            "cd_menu":   self.run_cd_menu,
+            "cdmenu":    self.run_cd_menu,
+        }
+        if task in dispatch:
+            dispatch[task]()
+        elif self.info.cd_path:
             self.run_cd_menu()
         else:
             self.run_installer()
-
         self.quit()
 
+    # ── Main flux ──────────────────────────────
+
     def run_installer(self):
-        previous_target_dir = self.info.previous_target_dir
-        if previous_target_dir and os.path.isdir(previous_target_dir):
-            log.info("Already installed, running the uninstaller...")
+        if self.info.previous_target_dir and os.path.isdir(self.info.previous_target_dir):
+            log.info("Already installed — running uninstaller first")
             self.info.uninstall_before_install = True
             self.run_uninstaller()
-            self._backend_call(("fetch_basic_info", "fetchbasicinfo"))
-
-            previous_target_dir = self.info.previous_target_dir
-            if previous_target_dir and os.path.isdir(previous_target_dir):
-                message = _(
-                    "A previous installation was detected in %s. Uninstall that before continuing."
-                ) % previous_target_dir
-                log.error(message)
-                self.get_frontend()
-                self._frontend_call(("show_error_message", "showerrormessage"), message)
+            self.backend.fetch_basic_info()
+            if self.info.previous_target_dir and os.path.isdir(self.info.previous_target_dir):
+                msg = _("A previous installation was detected in %s. "
+                        "Uninstall that before continuing.") % self.info.previous_target_dir
+                log.error(msg)
+                self.get_frontend().show_error_message(msg)
                 self.quit()
                 return
 
         log.info("Running the installer...")
-        self.frontend = self.get_frontend()
-        self._frontend_call(("show_installation_settings", "showinstallationsettings"))
-        log.info("Received settings")
-        self._frontend_call(
-            ("run_tasks", "runtasks"),
-            self._backend_call(("get_installation_tasklist", "getinstallationtasklist")),
-        )
+        fe = self.get_frontend()
+        fe.show_installation_settings()
+        log.info("Settings received")
+        fe.run_tasks(self.backend.get_installation_tasklist())
         log.info("Almost finished installing")
-
         if not self.info.non_interactive:
-            self._frontend_call(("show_installation_finish_page", "showinstallationfinishpage"))
-
-        log.info("Finished installation")
+            fe.show_installation_finish_page()
+        log.info("Installation finished")
         if self.info.run_task == "reboot":
             self.reboot()
 
     def run_uninstaller(self):
         log.info("Running the uninstaller...")
-
-        previous_target_dir = self.info.previous_target_dir
-        if not previous_target_dir or not os.path.isdir(previous_target_dir):
-            log.error("No previous target dir found, exiting")
+        if not self.info.previous_target_dir or \
+           not os.path.isdir(self.info.previous_target_dir):
+            log.error("No previous target dir found — aborting")
+            return
+        if self.backend.run_previous_uninstaller():
             return
 
-        if self._backend_call(("run_previous_uninstaller", "runpreviousuninstaller")):
-            return
-
-        self.frontend = self.get_frontend()
-        self._frontend_call(("show_uninstallation_settings", "showuninstallationsettings"))
-        log.info("Received settings")
-
+        fe = self.get_frontend()
+        fe.show_uninstallation_settings()
+        log.info("Settings received")
         try:
-            self._frontend_call(
-                ("run_tasks", "runtasks"),
-                self._backend_call(("get_uninstallation_tasklist", "getuninstallationtasklist")),
-            )
+            fe.run_tasks(self.backend.get_uninstallation_tasklist())
         except errors.WubiCorruptionError:
-            err = _(
-                "Files on your computer are corrupted. A disk check has been scheduled and will be performed at the next boot. Please reboot your computer now."
-            )
-            self._frontend_call(("show_error_message", "showerrormessage"), err)
+            msg = _("Files on your computer are corrupted. "
+                    "A disk check has been scheduled for the next boot. "
+                    "Please reboot now.")
+            fe.show_error_message(msg)
             self.quit()
             return
 
         log.info("Almost finished uninstalling")
         if not self.info.uninstall_before_install and not self.info.non_interactive:
-            self._frontend_call(("show_uninstallation_finish_page", "showuninstallationfinishpage"))
-        log.info("Finished uninstallation")
+            fe.show_uninstallation_finish_page()
+        log.info("Uninstallation finished")
 
     def run_cd_menu(self):
         log.info("Running the CD menu...")
-        self.frontend = self.get_frontend()
-
         if not self.info.cd_distro:
-            self._frontend_call(
-                ("show_error_message", "showerrormessage"),
-                _("No CD detected, cannot run CD menu"),
-            )
+            self.get_frontend().show_error_message(_("No CD detected, cannot run CD menu"))
             self.quit()
             return
-
-        self._frontend_call(("show_cd_menu_page", "showcdmenupage"))
+        self.get_frontend().show_cd_menu_page()
         log.info("CD menu finished")
         self.select_task()
 
     def run_cdboot(self):
         if not self.info.cd_distro:
-            message = _(
-                "Could not find any valid CD. CD boot helper can only be used with a Live CD."
-            )
-            log.error(message)
-            self.get_frontend()
-            self._frontend_call(("show_error_message", "showerrormessage"), message)
+            msg = _("Could not find any valid CD. "
+                    "CD boot helper can only be used with a Live CD.")
+            log.error(msg)
+            self.get_frontend().show_error_message(msg)
             self.quit()
             return
-
         if self.info.previous_target_dir:
-            log.info("Already installed, running the uninstaller...")
+            log.info("Already installed — running uninstaller first")
             self.info.uninstall_before_install = True
             self.run_uninstaller()
-            self._backend_call(("fetch_basic_info", "fetchbasicinfo"))
-
+            self.backend.fetch_basic_info()
             if self.info.previous_target_dir:
-                message = _(
-                    "A previous installation was detected in %s. Uninstall that before continuing."
-                ) % self.info.previous_target_dir
-                log.error(message)
-                self.get_frontend()
-                self._frontend_call(("show_error_message", "showerrormessage"), message)
+                msg = _("A previous installation was detected in %s. "
+                        "Uninstall that before continuing.") % self.info.previous_target_dir
+                log.error(msg)
+                self.get_frontend().show_error_message(msg)
                 self.quit()
                 return
 
         log.info("Running the CD boot helper...")
-        self.frontend = self.get_frontend()
-        self._frontend_call(("show_cdboot_page", "showcdbootpage"))
-        log.info("CD boot helper confirmed")
-        self._frontend_call(
-            ("run_tasks", "runtasks"),
-            self._backend_call(("get_cdboot_tasklist", "getcdboottasklist")),
-        )
-        log.info("Almost finished installing")
-        self._frontend_call(("show_installation_finish_page", "showinstallationfinishpage"))
-        log.info("Finished installation")
-
+        fe = self.get_frontend()
+        fe.show_cdboot_page()
+        log.info("CD boot confirmed")
+        fe.run_tasks(self.backend.get_cdboot_tasklist())
+        log.info("Almost finished")
+        fe.show_installation_finish_page()
+        log.info("Finished")
         if self.info.run_task == "reboot":
             self.reboot()
 
     def reboot(self):
         log.info("Rebooting")
-        tasklist = self._backend_call(("get_reboot_tasklist", "getreboottasklist"))
-        run_tasklist = getattr(tasklist, "run", None)
-        if not callable(run_tasklist):
-            raise AttributeError("Tasklist object has no callable 'run' method")
-        run_tasklist()
+        self.backend.get_reboot_tasklist().run()
 
     def show_info(self):
-        self._backend_call(("show_info", "showinfo"))
+        self.backend.show_info()
+
+    # ── Parsing CLI ──────────────────────────────
 
     def parse_commandline_arguments(self):
-        usage = "%s [options]" % self.info.application_name
-        parser = OptionParser(usage=usage, version=self.info.full_version)
+        parser = ArgumentParser(prog=self.info.application_name)
+        parser.add_argument("--quiet",          action="store_const", const="quiet",     dest="verbosity")
+        parser.add_argument("--verbose",        action="store_const", const="verbose",   dest="verbosity")
+        parser.add_argument("--install",        action="store_const", const="install",   dest="run_task")
+        parser.add_argument("--uninstall",      action="store_const", const="uninstall", dest="run_task")
+        parser.add_argument("--cdmenu",         action="store_const", const="cd_menu",   dest="run_task")
+        parser.add_argument("--cdboot",         action="store_const", const="cd_boot",   dest="run_task")
+        parser.add_argument("--showinfo",       action="store_const", const="show_info", dest="run_task")
+        parser.add_argument("--nobittorrent",   action="store_true",  dest="no_bittorrent")
+        parser.add_argument("--32bit",          action="store_true",  dest="force_i386")
+        parser.add_argument("--skipmd5check",   action="store_true",  dest="skip_md5_check")
+        parser.add_argument("--skipsizecheck",  action="store_true",  dest="skip_size_check")
+        parser.add_argument("--skipmemorycheck",action="store_true",  dest="skip_memory_check")
+        parser.add_argument("--noninteractive", action="store_true",  dest="non_interactive")
+        parser.add_argument("--test",           action="store_true",  dest="test")
+        parser.add_argument("--debug",          action="store_true",  dest="debug")
+        parser.add_argument("--drive",          dest="target_drive")
+        parser.add_argument("--size",           type=int,             dest="installation_size_mb")
+        parser.add_argument("--locale",         dest="locale")
+        parser.add_argument("--force-wubi",     action="store_true",  dest="force_wubi")
+        parser.add_argument("--language",       dest="language")
+        parser.add_argument("--username",       dest="username")
+        parser.add_argument("--password",       dest="password")
+        parser.add_argument("--distro",         dest="distro_name")
+        parser.add_argument("--accessibility",  dest="accessibility")
+        parser.add_argument("--webproxy",       dest="web_proxy")
+        parser.add_argument("--isopath",        dest="iso_path")
+        parser.add_argument("--dimagepath",     dest="disk_image_path")
+        parser.add_argument("--exefile",        dest="original_exe",  default=None)
+        parser.add_argument("--log-file",       dest="log_file",      default=None)
+        parser.add_argument("--interface",      dest="use_frontend",  default=None)
 
-        parser.add_option("--quiet", action="store_const", const="quiet", dest="verbosity")
-        parser.add_option("--verbose", action="store_const", const="verbose", dest="verbosity")
-        parser.add_option("--install", action="store_const", const="install", dest="run_task")
-        parser.add_option("--uninstall", action="store_const", const="uninstall", dest="run_task")
-        parser.add_option("--cdmenu", action="store_const", const="cd_menu", dest="run_task")
-        parser.add_option("--cdboot", action="store_const", const="cd_boot", dest="run_task")
-        parser.add_option("--showinfo", action="store_const", const="show_info", dest="run_task")
-        parser.add_option("--nobittorrent", action="store_true", dest="no_bittorrent")
-        parser.add_option("--32bit", action="store_true", dest="force_i386")
-        parser.add_option("--skipmd5check", action="store_true", dest="skip_md5_check")
-        parser.add_option("--skipsizecheck", action="store_true", dest="skip_size_check")
-        parser.add_option("--skipmemorycheck", action="store_true", dest="skip_memory_check")
-        parser.add_option("--noninteractive", action="store_true", dest="non_interactive")
-        parser.add_option("--test", action="store_true", dest="test")
-        parser.add_option("--debug", action="store_true", dest="debug")
-        parser.add_option("--drive", dest="target_drive")
-        parser.add_option("--size", type="int", dest="installation_size_mb")
-        parser.add_option("--locale", dest="locale")
-        parser.add_option("--force-wubi", action="store_true", dest="force_wubi")
-        parser.add_option("--language", dest="language")
-        parser.add_option("--username", dest="username")
-        parser.add_option("--password", dest="password")
-        parser.add_option("--distro", dest="distro_name")
-        parser.add_option("--accessibility", dest="accessibility")
-        parser.add_option("--webproxy", dest="web_proxy")
-        parser.add_option("--isopath", dest="iso_path")
-        parser.add_option("--dimagepath", dest="disk_image_path")
-        parser.add_option("--exefile", dest="original_exe", default=None)
-        parser.add_option("--log-file", dest="log_file", default=None)
-        parser.add_option("--interface", dest="use_frontend", default=None)
+        args = parser.parse_args()
+        self.info.update(vars(args))
 
-        options, self.args = parser.parse_args()
-        self.info.update(vars(options))
-
-        if self.info.test:
-            self.info.debug = True
-        if self.info.debug:
+        if self.info.test or self.info.debug:
             self.info.verbosity = "verbose"
 
         if self.info.original_exe:
-            original_exe = self.info.original_exe.strip()
-            if original_exe[:1] in ("'", '"') and original_exe[-1:] in ("'", '"'):
-                original_exe = original_exe[1:-1].strip()
-            self.info.original_exe = original_exe
-
-            if os.path.basename(self.info.original_exe).lower().startswith("uninstall-"):
+            exe = self.info.original_exe.strip().strip("'\"")
+            self.info.original_exe = exe
+            if os.path.basename(exe).lower().startswith("uninstall-"):
                 self.info.run_task = "uninstall"
 
-    def set_logger(self, log_to_console=True):
-        root_logger = logging.getLogger()
-        root_logger.setLevel(logging.DEBUG)
+    # ── Logger ───────────────────────────────────
 
-        for handler in list(root_logger.handlers):
-            root_logger.removeHandler(handler)
+    def set_logger(self, log_to_console=True):
+        root = logging.getLogger()
+        root.setLevel(logging.DEBUG)
+        for h in list(root.handlers):
+            root.removeHandler(h)
 
         if not self.info.log_file or self.info.log_file.lower() != "none":
             if not self.info.log_file:
                 filename = (self.info.full_application_name or "wubi") + ".log"
-                directory = tempfile.gettempdir()
-                self.info.log_file = os.path.join(directory, filename)
-
-            if not self.info.log_file:
-                return
-            file_handler = logging.FileHandler(self.info.log_file)
-            file_formatter = logging.Formatter(
+                self.info.log_file = os.path.join(tempfile.gettempdir(), filename)
+            fh = logging.FileHandler(self.info.log_file, encoding="utf-8")
+            fh.setFormatter(logging.Formatter(
                 "%(asctime)s %(levelname)-6s %(name)s: %(message)s",
-                datefmt="%m-%d %H:%M",
+                datefmt="%m-%d %H:%M"))
+            fh.setLevel(logging.DEBUG)
+            root.addHandler(fh)
+
+        if log_to_console and not self.info.original_exe:
+            ch = logging.StreamHandler(sys.stderr)
+            ch.setFormatter(logging.Formatter("%(levelname)-6s %(message)s"))
+            ch.setLevel(
+                logging.DEBUG if self.info.verbosity == "verbose"
+                else logging.ERROR if self.info.verbosity == "quiet"
+                else logging.INFO
             )
-            file_handler.setFormatter(file_formatter)
-            file_handler.setLevel(logging.DEBUG)
-            root_logger.addHandler(file_handler)
-
-        if log_to_console and not bool(self.info.original_exe):
-            console_handler = logging.StreamHandler()
-            console_formatter = logging.Formatter("%(message)s", datefmt="%m-%d %H:%M")
-            console_handler.setFormatter(console_formatter)
-
-            if self.info.verbosity == "verbose":
-                console_handler.setLevel(logging.DEBUG)
-            elif self.info.verbosity == "quiet":
-                console_handler.setLevel(logging.ERROR)
-            else:
-                console_handler.setLevel(logging.INFO)
-
-            root_logger.addHandler(console_handler)
+            root.addHandler(ch)
 
 
 if __name__ == "__main__":
-    app = Wubi(application_name, version, revision, os.path.abspath(os.path.dirname(__file__)))
+    app = Wubi(application_name, version, revision,
+               os.path.abspath(os.path.dirname(__file__)))
     app.run()

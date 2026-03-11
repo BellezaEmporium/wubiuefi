@@ -389,7 +389,7 @@ class ThreadedTaskList(threading.Thread, TaskList):
         threading.Thread.__init__(self)
         TaskList.__init__(self, name=name, description=description, tasks=tasks, callback = callback)
         self._stopped_event = threading.Event()
-        self.setDaemon(True) #do not prevent the main application from closing
+        self.daemon = True #do not prevent the main application from closing
 
     def cancel(self):
         self._stopped_event.set()

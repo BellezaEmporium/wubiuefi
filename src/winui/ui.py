@@ -24,13 +24,12 @@ Python wrappers around win32 widgets and window classes
 from . import defs
 import os
 import ctypes
+from ctypes import wintypes
 
 __all__ = ["Window", "Frontend"]
 
 #TBD use weakref in _event_handlers_
 _event_handlers_ = {}
-
-from ctypes import wintypes
 
 def event_dispatcher(hwnd, message, wparam, lparam):
     eh = _event_handlers_
@@ -68,6 +67,7 @@ class BasicWindow(object):
     _window_class_style_ = defs.CS_HREDRAW | defs.CS_VREDRAW
     _window_style_ = 0
     _window_ex_style_ = 0
+    _window_class_registered_ = False
 
     def __init__(self, parent=None, x=None, y=None, width=None, height=None, text=None, frontend=None, icon=None):
         self.parent = parent
@@ -78,11 +78,12 @@ class BasicWindow(object):
             self.frontend = parent.frontend
         else:
             raise ValueError("Either 'frontend' or a valid 'parent' with a 'frontend' attribute must be provided.")
-        if not self.__class__._window_class_name_:
+        if not self.__class__._window_class_registered_:
             self.__class__._window_class_name_ = self.__class__.__name__
             if icon:
-                    self._icon = ctypes.windll.user32.LoadImageW(defs.NULL, icon if isinstance(icon, str) else icon.decode('mbcs'), defs.IMAGE_ICON, 0, 0, defs.LR_LOADFROMFILE);
+                self._icon = ctypes.windll.user32.LoadImageW(...)
             self._register_window()
+            self.__class__._window_class_registered_ = True
         self._create_window(x, y, width, height, text)
         self._register_handlers()
         self.on_init()
@@ -95,7 +96,10 @@ class BasicWindow(object):
                 icon=self._icon)
         self._window_class_._atom_ = defs.RegisterClassExW(ctypes.byref(self._window_class_))
         if not self._window_class_._atom_:
-            raise ctypes.WinError()
+            import ctypes
+            err = ctypes.GetLastError()
+            if err != 1410:
+                raise ctypes.WinError(err)
 
     def _create_window(self, x=None, y=None, width=None, height=None, text=None):
         hmenu = defs.NULL

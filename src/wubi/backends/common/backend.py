@@ -73,6 +73,10 @@ class Backend(object):
             log.debug('user defined locale = %s' % self.info.locale)
         gettext.install(self.info.application_name, localedir=self.info.translations_dir, names=['ngettext'])
     def get_installation_tasklist(self):
+        if not hasattr(self, 'cd_path'):
+            self.cd_path = None
+        if not hasattr(self, 'iso_path'):
+            self.iso_path = None
         self.cache_cd_path()
         dimage = self.info.distro.diskimage
         # don't use diskimage for a FAT32 target directory
