@@ -7,28 +7,34 @@ Wubi is the Windows Ubuntu Installer. Wubi installs Ubuntu inside a file within 
 
 For more information see: https://github.com/hakuna-m/wubiuefi/wiki
 
+## Disclaimer
+
+This is a base rework of what Hakuna Matata and the Canonical team has done. This is a major rework of WubiUEFI, bumping the main requirements to Python 3.10+, ditching most of the external requirements for PyPi-available libraries and using the power of WSL instead of Wine.
+This was forked and reworked solely for my own sake of trying to install an Ubuntu distro "properly" on another computer I possess.
+It might have some quacks and flaws (might not look good as well).
+
+I STRONGLY advise into disabling Secure Boot BEFORE launching yourself into this for now, as I haven't done the necessary for signing stuff (yet). (Might also get over App Control block for Win10+).
+
 ## Compiling
 
 
-| Make Command         | Description                                                                                                                                                                                                               |
-|----------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `make`               | Builds wubi.exe, note that the first time you run it, you will have to install python inside of Wine, this is performed automatically, just confirm all the default choices in the installation screens that will appear. |
-| `make runpy`         | Runs wubi under wine directly from source                                                                                                                                                                                 |
-| `make runbin`        | Builds wubi and runs the packaged binary under wine                                                                                                                                                                       |
-| `make wubizip`       | Creates a special zip file conatining python.exe and non byte compiled python files that is convenient for debugging purposes. Inside of Windows, unzip the archive, then run `python.exe main.py --verbose`              |
-| `make pot`           | Generates a gettext template (`/po/wubi.pot`)                                                                                                                                                                             |
-| `make check_winboot` | Creates the environment for building and signing boot loaders if it doesn't exist.                                                                                                                                        |
-| `make winboot`       | Creates the boot loader files (old version)                                                                                                                                                                               |
-| `make winboot2`      | Creates the boot loader files (new version)                                                                                                                                                                               |
-| `make clean`         | Removes built files                                                                                                                                                                                                       |
-| `make distclean`     | Removes built files and environment                                                                                                                                                                                       |
+| Make Command         | Description                                                                                                                                                               |
+|----------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `make`               | Builds wubi.exe, note that the first time you run it, this is performed automatically, just confirm all the default choices in the installation screens that will appear. |
+| `make runbin`        | Builds wubi and runs the packaged binary under wine                                                                                                                       |
+| `make wubizip`       | Creates a debug version of Wubi, with Python and the necessary requirements. Unzip the archive, then run `python.exe main.py --verbose`                                   |
+| `make pot`           | Generates a gettext template (`/po/wubi.pot`)                                                                                                                             |
+| `make check_winboot` | Creates the environment for building and signing boot loaders if it doesn't exist.                                                                                        |
+| `make winboot`       | Creates the bootloader files (old version)                                                                                                                                |
+| `make winboot2`      | Creates the bootloader files (new version)                                                                                                                                |
+| `make clean`         | Removes built files                                                                                                                                                       |
+| `make distclean`     | Removes built files and environment                                                                                                                                       |
 
 
 ## Code overview
 
 * `/src/winui` : Thin ctypes wrapper around win32 native graphical user interface
-* `/src/pylauncher` : Makes python code into an executable, the Python script is examined and all the dependencies are added to an LZMA archive, then an executable header is concatenated to the archive that decompresses it and runs the script using the Python DLL
-* `/src/wubi` : The main Wubi application, the code is split between backend and frontend, where each runs in its own thread. The two interact via a tasklist object, where the frontend usually runs a tasklist which is a set of backend tasks. Backends and Frontends are platform specific. For now only the Windows platform is supported.
+* `/src/wubi` : The main Wubi application, the code is split between backend and frontend, where each runs in its own thread. The two interact via a tasklist object, where the frontend usually runs a tasklist which is a set of backend tasks. Backend is platform-specific, and the frontend is built with tkinter, which means it should load without overhead on all OSs.
 * `/data` : Settings for Wubi branding and customization
 * `/po` : Translations
 * `/bin` : Other binary files required at runtime (will be compiled at a later stage)
