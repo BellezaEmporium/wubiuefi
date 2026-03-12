@@ -56,9 +56,10 @@ def run_command(command, show_window=False):
     return stdout on success or raise error
     '''
     process = spawn_command(command, show_window=show_window)
-    process.stdin.close()
-    output = process.stdout.read()
-    errormsg = process.stderr.read()
+    if process and process.stdin and process.stdout and process.stderr:
+        process.stdin.close()
+        output = process.stdout.read()
+        errormsg = process.stderr.read()
     retval = process.wait()
     if retval == 0:
         return output
@@ -75,26 +76,26 @@ def run_nonblocking_command(command, show_window=False):
     return process.pid
 
 def md5_password(password):
-    # From http://mail.python.org/pipermail/python-list/2003-March/195202.html
     if isinstance(password, str):
         password = password.encode('utf-8')
     salt_chars = './abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-    salt = ''.join([random.choice(salt_chars) for i in range(5)]).encode('utf-8')
+    salt = ''.join([random.choice(salt_chars) for i in range(5)])
+    salt_bytes = salt.encode('utf-8')  # ← garder les bytes pour les hashlib.update()
 
     hash = hashlib.md5()
     hash.update(password)
     hash.update(b'$1$')
-    hash.update(salt)
+    hash.update(salt_bytes)
 
     second_hash = hashlib.md5()
     second_hash.update(password)
-    second_hash.update(salt)
+    second_hash.update(salt_bytes)
     second_hash.update(password)
-    second_hash = second_hash.digest()
-    q, r = divmod(len(password), len(second_hash))
-    second_hash = second_hash*q + second_hash[:r]
-    assert len(second_hash) == len(password)
-    hash.update(second_hash)
+    second_hash_digest = second_hash.digest()
+    q, r = divmod(len(password), len(second_hash_digest))
+    second_hash_digest = second_hash_digest*q + second_hash_digest[:r]
+    assert len(second_hash_digest) == len(password)
+    hash.update(second_hash_digest)
     del second_hash, q, r
 
     i = len(password)
@@ -114,7 +115,7 @@ def md5_password(password):
         else:
             nth_hash.update(hash)
         if i % 3:
-            nth_hash.update(salt)
+            nth_hash.update(salt_bytes)
         if i % 7:
             nth_hash.update(password)
         if i % 2:
@@ -287,11 +288,11 @@ def find_line_in_file(file_path, text, endswith=False):
             return line[:-1]
 
 def unix_path(path):
-    #TBD not a proper conversion but will do for now
+    """Convert Windows path to Unix-style path"""
     path = path.replace('\\', '/')
-    if len(path)>1 and path[1] == ':':
+    if len(path) > 1 and path[1] == ':':
         path = path[2:]
-    if len(path)>1 and path[-1] == '/':
+    if len(path) > 1 and path[-1] == '/':
         path = path[:-1]
     return path
 

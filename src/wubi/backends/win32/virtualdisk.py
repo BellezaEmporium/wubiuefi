@@ -97,45 +97,35 @@ def create_virtual_disk(path, size_mb):
     defs.CloseHandle(file_handle)
 
 def grant_privileges():
-    # For version < Windows NT, no privileges are involved
-    full_version = sys.getwindowsversion()
-    major, minor, build, platform, txt = full_version
-    if platform < 2:
-        log.debug("Skipping grant_privileges, because Windows 95/98/ME was detected")
+    # platform < 2 = Win9x/ME, platform 2 = WinNT/2000/XP/Vista/7/8/10
+    ver = sys.getwindowsversion()
+    if ver.platform < 2:
         return
-
-    # SetFileValidData() requires the SE_MANAGE_VOLUME_NAME privilege, so we must enable it
-    #   on the process token. We don't attempt to strip the privilege afterward as that would
-    #  introduce race conditions. */
     handle = ctypes.c_long(0)
-    if defs.OpenProcessToken(defs.GetCurrentProcess(), defs.TOKEN_ADJUST_PRIVILEGES|defs.TOKEN_QUERY, byref(handle)):
+    if defs.OpenProcessToken(defs.GetCurrentProcess(),
+                             defs.TOKEN_ADJUST_PRIVILEGES | defs.TOKEN_QUERY,
+                             byref(handle)):
         luid = defs.LUID()
         if defs.LookupPrivilegeValue(defs.NULL, defs.SE_MANAGE_VOLUME_NAME, byref(luid)):
             tp = defs.TOKEN_PRIVILEGES()
             tp.PrivilegeCount = 1
             tp.Privileges[0].Luid = luid
             tp.Privileges[0].Attributes = defs.SE_PRIVILEGE_ENABLED
-            if not defs.AdjustTokenPrivileges(handle, defs.FALSE, byref(tp), 0, defs.NULL, defs.NULL):
-                log.debug("grant_privileges: AdjustTokenPrivileges() failed.")
-        else:
-            log.debug("grant_privileges: LookupPrivilegeValue() failed.")
+            defs.AdjustTokenPrivileges(handle, defs.FALSE, byref(tp), 0,
+                                       defs.NULL, defs.NULL)
         defs.CloseHandle(handle)
-    else:
-        log.debug("grant_privileges: OpenProcessToken() failed.")
 
 def call_SetFileValidData(file_handle, size_bytes):
-    # No need, Windows 95/98/ME do this automatically anyway.
-    full_version = sys.getwindowsversion()
-    major, minor, build, platform, txt = full_version
-    if platform < 2:
-        log.debug("Skipping SetFileValidData, because Windows 95/98/ME was detected")
+    ver = sys.getwindowsversion()
+    if ver.platform < 2:
         return
     try:
         SetFileValidData = ctypes.windll.kernel32.SetFileValidData
-    except:
-        log.debug("Could not load SetFileValidData.")
-        return
-    SetFileValidData(file_handle, size_bytes)
+        if hasattr(size_bytes, 'QuadPart'):
+            size_bytes = size_bytes.QuadPart
+        SetFileValidData(file_handle, ctypes.c_longlong(size_bytes))
+    except Exception as e:
+        log.debug("SetFileValidData failed (non-fatal): %s" % e)
 
 def zero_file(file_handle, clear_bytes):
    bytes_cleared = 0

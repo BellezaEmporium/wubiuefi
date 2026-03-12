@@ -22,22 +22,21 @@ import ctypes
 import ctypes.wintypes
 DWORD = ctypes.wintypes.DWORD
 
-class MEMORYSTATUS(ctypes.Structure):
+class MEMORYSTATUSEX(ctypes.Structure):
     _fields_ = [
-        ('dwLength', DWORD),
-        ('dwMemoryLoad', DWORD),
-        ('dwTotalPhys', DWORD),
-        ('dwAvailPhys', DWORD),
-        ('dwTotalPageFile', DWORD),
-        ('dwAvailPageFile', DWORD),
-        ('dwTotalVirtual', DWORD),
-        ('dwAvailVirtual', DWORD),
-        ]
+        ('dwLength',                ctypes.wintypes.DWORD),
+        ('dwMemoryLoad',            ctypes.wintypes.DWORD),
+        ('ullTotalPhys',            ctypes.c_uint64),
+        ('ullAvailPhys',            ctypes.c_uint64),
+        ('ullTotalPageFile',        ctypes.c_uint64),
+        ('ullAvailPageFile',        ctypes.c_uint64),
+        ('ullTotalVirtual',         ctypes.c_uint64),
+        ('ullAvailVirtual',         ctypes.c_uint64),
+        ('ullAvailExtendedVirtual', ctypes.c_uint64),
+    ]
 
 def get_total_memory_mb():
-    memory_status = MEMORYSTATUS()
-    memory_status.dwLength = ctypes.sizeof(MEMORYSTATUS)
-    ctypes.windll.kernel32.GlobalMemoryStatus(ctypes.byref(memory_status))
-    total_memory = memory_status.dwTotalPhys
-    total_memory_mb = 1.0*total_memory/1024**2
-    return total_memory_mb
+    mem = MEMORYSTATUSEX()
+    mem.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+    ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(mem))
+    return mem.ullTotalPhys / 1024**2

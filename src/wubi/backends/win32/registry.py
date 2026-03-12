@@ -24,31 +24,35 @@ log = logging.getLogger("registry")
 
 from winui.defs import KEY_SET_VALUE
 
+KEY_WOW64_64KEY = 0x0100
+
 def get_value(key, subkey, attr):
-    key = getattr(winreg, key)
-    try:
-        handle = winreg.OpenKey(key, subkey)
-    except:
-        return None
-    try:
-        (value, type) = winreg.QueryValueEx(handle, attr)
-    except:
-        return None
-    winreg.CloseKey(handle)
-    return value
+    hkey = getattr(winreg, key)
+    for flags in [KEY_WOW64_64KEY, 0]: # try 64-bit view first, then 32-bit view
+        try:
+            handle = winreg.OpenKey(hkey, subkey,
+                                    access=winreg.KEY_READ | flags)
+            value, _ = winreg.QueryValueEx(handle, attr)
+            winreg.CloseKey(handle)
+            return value
+        except OSError:
+            continue
+    return None
 
 def set_value(key, subkey, attr, value):
-    key = getattr(winreg, key)
+    hkey = getattr(winreg, key)
     try:
-        handle = winreg.OpenKey(key, subkey, access=KEY_SET_VALUE)
-    except:
-        handle = winreg.CreateKey(key, subkey)
+        handle = winreg.OpenKey(hkey, subkey,
+                                access=winreg.KEY_SET_VALUE | KEY_WOW64_64KEY)
+    except OSError:
+        handle = winreg.CreateKeyEx(hkey, subkey,
+                                    access=winreg.KEY_SET_VALUE | KEY_WOW64_64KEY)
     try:
-        log.debug("Setting registry key %s %s %s %s" % (key, subkey, attr, value))
-        winreg.SetValueEx(handle, attr, 0, 1, value)
+        winreg.SetValueEx(handle, attr, 0, winreg.REG_SZ, str(value))
     except Exception as err:
         log.exception("Cannot set registry key %s\\%s = %s\n%s" % (subkey, attr, value, err))
-    winreg.CloseKey(handle)
+    finally:
+        winreg.CloseKey(handle)
 
 def delete_key(key, subkey):
     key = getattr(winreg, key)

@@ -1,15 +1,21 @@
 # -*- mode: python ; coding: utf-8 -*-
-from PyInstaller.utils.hooks import collect_submodules, collect_data_files
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
+import sys, os
+
+tk_datas = collect_data_files('tkinter')
+tcl_path = os.path.join(sys.prefix, 'tcl')
+tk_path  = os.path.join(sys.prefix, 'Lib', 'tkinter')
 
 hiddenimports = collect_submodules('wubi')
 
-datas = [
+datas=[
     ('data', 'data'),
     ('build/bin', 'bin'),
     ('build/version.py', '.'),
     ('build/winboot', 'winboot'),
     ('build/translations', 'translations'),
-] + collect_data_files('wubi')
+    ('src/wubi', 'wubi'),
+] + tk_datas
 
 a = Analysis(
     ['src/main.py'],

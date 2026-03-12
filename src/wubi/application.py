@@ -3,10 +3,12 @@ import sys
 import tempfile
 import logging
 import traceback
+import threading
 from argparse import ArgumentParser
 from gettext import gettext as _
 
 from wubi import errors
+from wubi.backends.common.utils import run_command
 from wubi.errors import QuitException
 from version import application_name, version, revision
 
@@ -347,6 +349,7 @@ class Wubi(object):
             fe.show_installation_finish_page()
         log.info("Installation finished")
         if self.info.run_task == "reboot":
+            self.quit()
             self.reboot()
 
     def run_uninstaller(self):
@@ -422,9 +425,13 @@ class Wubi(object):
             self.reboot()
 
     def reboot(self):
-        log.info("Rebooting")
-        if self.backend:
-            self.backend.get_reboot_tasklist().run()
+        log.info("Scheduling async reboot")
+        def _do_reboot():
+            import time
+            time.sleep(2)
+            run_command(['shutdown', '-r', '-t', '00'])
+        t = threading.Thread(target=_do_reboot, daemon=True)
+        t.start()
 
     def show_info(self):
         if self.backend:

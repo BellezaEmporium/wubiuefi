@@ -75,7 +75,6 @@ class TkFrontend:
         self.run()
 
     def show_installation_settings(self):
-        log.debug("show_installation_settings: creating InstallationPage")
         try:
             self.installation_page = InstallationPage(self)
         except Exception:
@@ -87,8 +86,7 @@ class TkFrontend:
         if self.application.info.quitting:
             return
         if not self.application.info.non_interactive:
-            self.accessibility_page = AccessibilityPage(self)
-            self.show_page(self.accessibility_page)
+            self.show_page(self.installation_page)
 
     def show_cd_menu_page(self):
         from .cd_menu_page import CDMenuPage

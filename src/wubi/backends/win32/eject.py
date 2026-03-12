@@ -22,23 +22,19 @@ import ctypes
 from winui.defs import FILE_SHARE_READ, FILE_SHARE_WRITE, GENERIC_READ, OPEN_EXISTING
 IOCTL_STORAGE_EJECT_MEDIA = 0x2D4808
 
-
 def eject_cd(cd_path):
-    #platform specific
     if not cd_path:
         return
-    create_file = ctypes.windll.kernel32.CreateFileA
+    create_file = ctypes.windll.kernel32.CreateFileW  # W, pas A
+    create_file.restype = ctypes.c_void_p
     cd_handle = create_file(
         "\\\\.\\%s" % cd_path[:2],
         GENERIC_READ,
-        FILE_SHARE_READ|FILE_SHARE_WRITE,
-        0,
-        OPEN_EXISTING,
-        0, 0)
-    if cd_handle:
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        None, OPEN_EXISTING, 0, None)
+    if cd_handle and cd_handle != ctypes.c_void_p(-1).value:
         x = ctypes.c_int()
         ctypes.windll.kernel32.DeviceIoControl(
-            cd_handle,
-            IOCTL_STORAGE_EJECT_MEDIA,
-            0, 0, 0, 0, ctypes.byref(x), 0)
+            cd_handle, IOCTL_STORAGE_EJECT_MEDIA,
+            None, 0, None, 0, ctypes.byref(x), None)
         ctypes.windll.kernel32.CloseHandle(cd_handle)

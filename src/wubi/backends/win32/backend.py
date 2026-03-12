@@ -38,6 +38,8 @@ import tempfile
 import struct
 log = logging.getLogger('WindowsBackend')
 
+from gettext import gettext as _
+
 
 class WindowsBackend(Backend):
     '''
@@ -72,6 +74,23 @@ class WindowsBackend(Backend):
         drives = [(d.path[:2].lower(), d) for d in self.info.drives]
         self.info.drives_dict = dict(drives)
         self.info.efi = self.check_EFI()
+
+    def check_secure_boot(self):
+        """Checks if the computer has Secure Boot enabled. 
+        On Windows 11 with Secure Boot enabled, the BCD entry for GRUB will not be signed, 
+        and the user will have to disable Secure Boot manually."""
+        val = registry.get_value(
+            'HKEY_LOCAL_MACHINE',
+            r'SYSTEM\CurrentControlSet\Control\SecureBoot\State',
+            'UEFISecureBootEnabled')
+        enabled = bool(val)
+        if enabled:
+            build = int(self.info.windows_build or 0)
+            if build >= 22000:
+                log.warning("Secure Boot is reported to be running in this machine — "
+                            "the BCD entry for GRUB will not be signed. "
+                            "The user will have to disable Secure Boot manually.")
+        return enabled
 
     def select_target_dir(self):
         target_dir = join_path(self.info.target_drive.path, self.info.distro.installation_dir)
@@ -159,7 +178,10 @@ class WindowsBackend(Backend):
 
     def remove_existing_binary(self):
         try:
-            binary = os.path.join(self.get_startup_folder(), 'wubi.exe')
+            startup_folder = self.get_startup_folder()
+            if startup_folder is None:
+                return
+            binary = os.path.join(startup_folder, 'wubi.exe')
         except: # if the startup folder is missing, there is nothing to remove
             return
 
@@ -225,20 +247,26 @@ class WindowsBackend(Backend):
 
     def get_country(self):
         icountry = registry.get_value('HKEY_CURRENT_USER', 'Control Panel\\International', 'iCountry')
-        try:
+        if icountry is not None:
+            try:
                 icountry = int(icountry)
-        except:
+            except:
                 pass
-        country = mappings.icountry2country.get(icountry)
-        if not country:
-            scountry = registry.get_value('HKEY_CURRENT_USER', 'Control Panel\\International', 'sCountry')
-            country = name2country.get(scountry)
-        if not country:
-           country = gmt2country.get(self.info.gmt)
-        if not country:
-            country = "US"
-        log.debug('country=%s' %country)
-        return country
+            country = mappings.icountry2country.get(icountry)
+            if not country:
+                scountry = registry.get_value('HKEY_CURRENT_USER', 'Control Panel\\International', 'sCountry')
+                if scountry:
+                    country = name2country.get(scountry)
+                else:
+                    country = "US"
+            if not country:
+                country = gmt2country.get(self.info.gmt)
+            if not country:
+                country = "US"
+            log.debug('country=%s' %country)
+            return country
+        else:
+            return "US"
 
     def get_timezone(self):
         timezone = country2tz.get(self.info.country)
@@ -556,34 +584,38 @@ class WindowsBackend(Backend):
             'HKEY_LOCAL_MACHINE',
             self.info.registry_key)
 
+    def _find_bcdedit(self):
+        """Gets the path to bcdedit.exe, which is needed for EFI detection and modification. 
+        On 64-bit Windows, 32-bit applications are redirected to SysWOW64, so we need to check both 
+        System32 and sysnative."""
+        candidates = [
+            join_path(os.environ.get('SystemRoot', r'C:\Windows'), 'System32', 'bcdedit.exe'),
+            join_path(os.environ.get('SystemRoot', r'C:\Windows'), 'sysnative', 'bcdedit.exe'),
+        ]
+        for path in candidates:
+            if os.path.isfile(path):
+                return path
+        raise FileNotFoundError("bcdedit.exe introuvable")
+
     def check_EFI(self):
-        efi = False
-        if self.info.bootloader == 'vista':
-            bcdedit = join_path(os.getenv('SystemDrive'), 'bcdedit.exe')
-            if not os.path.isfile(bcdedit):
-                bcdedit = join_path(os.environ['systemroot'], 'sysnative', 'bcdedit.exe')
-            if not os.path.isfile(bcdedit):
-                bcdedit = join_path(os.environ['systemroot'], 'System32', 'bcdedit.exe')
-            if not os.path.isfile(bcdedit):
-                log.error("Cannot find bcdedit")
-                return False
-            command = [bcdedit, '/enum']
-            try:
-                result = run_command(command)
-            except Exception as err:
-                # bcdedit can fail with "Access denied" when not elevated.
-                # EFI detection is best-effort and should not abort startup.
-                log.warning('EFI detection skipped: %s' % err)
-                return False
-            if isinstance(result, bytes):
-                result = result.decode('utf-8', 'ignore')
+        if self.info.bootloader != 'vista':
+            return False
+        try:
+            bcdedit = self._find_bcdedit()
+            result = run_command([bcdedit, '/enum'])
+        except Exception as err:
+            log.warning('EFI detection skipped: %s' % err)
+            return False
+        if isinstance(result, bytes):
+            result = result.decode('utf-8', 'ignore')
+        elif isinstance(result, bytearray):
+            result = bytes(result).decode('utf-8', 'ignore')
+        if isinstance(result, str):
             result = result.lower()
-            if "bootmgfw.efi" in result:
-                efi = True
-            if "winload.efi" in result:
-                efi = True
+        efi = "bootmgfw.efi" in result or "winload.efi" in result
         log.debug('EFI boot = %s' % efi)
         return efi
+
      
     def modify_EFI_folder(self, associated_task,bcdedit):
         command = [bcdedit, '/enum', '{bootmgr}']
