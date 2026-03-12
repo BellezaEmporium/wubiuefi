@@ -18,7 +18,7 @@ I STRONGLY advise into disabling Secure Boot BEFORE launching yourself into this
 ## Compiling
 
 
-| Make Command         | Description                                                                                                                                                                                          |                      |
+| Make Command         | Description                                                                                                                                                               |
 |----------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `make`               | Builds wubi.exe, note that the first time you run it, this is performed automatically, just confirm all the default choices in the installation screens that will appear. |
 | `make runbin`        | Builds wubi and runs the packaged binary under wine                                                                                                                       |
