@@ -7,6 +7,7 @@ from argparse import ArgumentParser
 from gettext import gettext as _
 
 from wubi import errors
+from wubi.errors import QuitException
 from version import application_name, version, revision
 
 log = logging.getLogger("application")
@@ -230,7 +231,14 @@ class Wubi(object):
             log.info("Quitting application (QuitException)")
 
         except Exception:
-            log.error("Unhandled exception:\n%s", traceback.format_exc())
+            tb = traceback.format_exc()
+            log.error("Unhandled exception:\n%s", tb)
+            try:
+                crash_path = os.path.join(tempfile.gettempdir(), "wubi_crash.txt")
+                with open(crash_path, "w") as f:
+                    f.write(tb)
+            except Exception:
+                pass
             self._show_fatal_error()
 
         finally:
@@ -318,7 +326,8 @@ class Wubi(object):
             log.info("Already installed — running uninstaller first")
             self.info.uninstall_before_install = True
             self.run_uninstaller()
-            self.backend.fetch_basic_info()
+            if self.backend:
+                self.backend.fetch_basic_info()
             if self.info.previous_target_dir and os.path.isdir(self.info.previous_target_dir):
                 msg = _("A previous installation was detected in %s. "
                         "Uninstall that before continuing.") % self.info.previous_target_dir
@@ -331,7 +340,8 @@ class Wubi(object):
         fe = self.get_frontend()
         fe.show_installation_settings()
         log.info("Settings received")
-        fe.run_tasks(self.backend.get_installation_tasklist())
+        if self.backend:
+            fe.run_tasks(self.backend.get_installation_tasklist())
         log.info("Almost finished installing")
         if not self.info.non_interactive:
             fe.show_installation_finish_page()
@@ -345,14 +355,15 @@ class Wubi(object):
            not os.path.isdir(self.info.previous_target_dir):
             log.error("No previous target dir found — aborting")
             return
-        if self.backend.run_previous_uninstaller():
+        if self.backend and self.backend.run_previous_uninstaller():
             return
 
         fe = self.get_frontend()
         fe.show_uninstallation_settings()
         log.info("Settings received")
         try:
-            fe.run_tasks(self.backend.get_uninstallation_tasklist())
+            if self.backend:
+                fe.run_tasks(self.backend.get_uninstallation_tasklist())
         except errors.WubiCorruptionError:
             msg = _("Files on your computer are corrupted. "
                     "A disk check has been scheduled for the next boot. "
@@ -388,7 +399,8 @@ class Wubi(object):
             log.info("Already installed — running uninstaller first")
             self.info.uninstall_before_install = True
             self.run_uninstaller()
-            self.backend.fetch_basic_info()
+            if self.backend:
+                self.backend.fetch_basic_info()
             if self.info.previous_target_dir:
                 msg = _("A previous installation was detected in %s. "
                         "Uninstall that before continuing.") % self.info.previous_target_dir
@@ -399,9 +411,10 @@ class Wubi(object):
 
         log.info("Running the CD boot helper...")
         fe = self.get_frontend()
-        fe.show_cdboot_page()
+        fe.show_cdboot_menu_page()
         log.info("CD boot confirmed")
-        fe.run_tasks(self.backend.get_cdboot_tasklist())
+        if self.backend:
+            fe.run_tasks(self.backend.get_cdboot_tasklist())
         log.info("Almost finished")
         fe.show_installation_finish_page()
         log.info("Finished")
@@ -410,10 +423,12 @@ class Wubi(object):
 
     def reboot(self):
         log.info("Rebooting")
-        self.backend.get_reboot_tasklist().run()
+        if self.backend:
+            self.backend.get_reboot_tasklist().run()
 
     def show_info(self):
-        self.backend.show_info()
+        if self.backend:
+            self.backend.show_info()
 
     # ── Parsing CLI ──────────────────────────────
 

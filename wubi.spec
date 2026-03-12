@@ -1,25 +1,22 @@
 # -*- mode: python ; coding: utf-8 -*-
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
+hiddenimports = collect_submodules('wubi')
+
+datas = [
+    ('data', 'data'),
+    ('build/bin', 'bin'),
+    ('build/version.py', '.'),
+    ('build/winboot', 'winboot'),
+    ('build/translations', 'translations'),
+] + collect_data_files('wubi')
 
 a = Analysis(
     ['src/main.py'],
     pathex=['src'],
     binaries=[],
-    datas=[
-        ('data', 'data'),
-        ('build/bin', 'bin'),
-        ('build/version.py', '.'),
-        ('build/winboot', 'winboot'),
-        ('build/translations', 'translations'),
-        ('src/wubi', 'wubi'),
-    ],
-    hiddenimports=[
-        'wubi',
-        'wubi.application',
-        'wubi.backends',
-        'wubi.frontends',
-    ],
+    datas=datas,
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -27,6 +24,7 @@ a = Analysis(
     noarchive=False,
     optimize=0,
 )
+
 pyz = PYZ(a.pure)
 
 exe = EXE(
@@ -39,12 +37,12 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     uac_admin=True,
     uac_uiaccess=False,
     runtime_tmpdir=None,
-    console=True,
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

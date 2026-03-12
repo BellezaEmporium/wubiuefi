@@ -21,7 +21,7 @@
 import sys
 import os
 import ctypes
-#import platform
+import platform
 from .drive import Drive
 from .virtualdisk import create_virtual_disk
 from .eject import eject_cd
@@ -47,7 +47,6 @@ class WindowsBackend(Backend):
     def __init__(self, *args, **kargs):
         Backend.__init__(self, *args, **kargs)
         self.info.iso_extractor = join_path(self.info.bin_dir, '7z.exe')
-        self.info.cpuid = join_path(self.info.bin_dir, 'cpuid.dll')
         log.debug('7z=%s' % self.info.iso_extractor)
         self.cache = {}
 
@@ -347,9 +346,7 @@ class WindowsBackend(Backend):
         return windows_language_code
 
     def get_windows_language(self):
-        lang = (self.info.language or "")[:2]
-        language2name = getattr(mappings, "language2name", {})
-        windows_language = language2name.get(lang)
+        windows_language = mappings.n2fulllanguage.get(self.info.windows_language_code)
         if not windows_language:
             windows_language = "English"
         log.debug('windows_language=%s' % windows_language)
@@ -923,10 +920,9 @@ class WindowsBackend(Backend):
             log.error(err)
 
     def get_arch(self):
-        cpuid = ctypes.windll.LoadLibrary(self.info.cpuid)
-        if cpuid.check_64bit():
-            arch = "amd64"
-        else:
-            arch = "i386"
-        log.debug("arch=%s" % arch)
-        return arch
+        # starting from python 3.10+, answers x86 or amd64 on the go.
+        # from python's docs : Returns the machine type, e.g. 'i386'. 
+        # An empty string is returned if the value cannot be determined.
+        arch = platform.machine()
+        log.info('arch=%s' % arch.lower())
+        return arch.lower()

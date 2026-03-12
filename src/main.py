@@ -25,14 +25,16 @@
 # so let's add ./lib to the path
 import sys
 import os
-root_dir = os.path.abspath(os.path.dirname(__file__))
-lib_dir = os.path.join(root_dir, 'lib')
-sys.path.insert(0, lib_dir)
 
 def get_base_path():
     if getattr(sys, 'frozen', False):
         return getattr(sys, '_MEIPASS')
-    return os.path.dirname(os.path.abspath(__file__))
+    # En dev, remonter d'un niveau au-dessus de src/
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+root_dir = get_base_path()
+lib_dir = os.path.join(root_dir, 'lib')
+sys.path.insert(0, lib_dir)
 
 
 from wubi.application import Wubi

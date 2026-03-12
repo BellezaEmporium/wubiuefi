@@ -176,9 +176,8 @@ class Backend(object):
         self.info.environment_variables = os.environ
         self.info.arch = self.get_arch()
         if self.info.force_i386:
-            log.debug("Forcing 32 bit arch")
             self.info.arch = "i386"
-        self.info.check_arch = (self.info.arch == "i386")
+        self.info.check_arch = False
         self.info.distro = None
         self.info.distros = self.get_distros()
         distros = [((d.name.lower(), d.arch), d) for d in  self.info.distros]
@@ -384,6 +383,8 @@ class Backend(object):
     def cache_cd_path(self):
         self.iso_path = None
         self.cd_path = None
+        if self.info.distro is None:
+            return
         if self.info.cd_distro \
         and self.info.distro == self.info.cd_distro \
         and self.info.cd_path \
@@ -399,6 +400,7 @@ class Backend(object):
                 self.iso_path = self.info.iso_path
             else:
                 self.iso_path = self.find_iso()
+
 
     def create_diskimage_dirs(self, associated_task=None):
         self.info.disks_dir = join_path(self.info.target_dir, "disks")
@@ -998,6 +1000,8 @@ class Backend(object):
 
     def find_cd(self):
         log.debug("Searching for local CD")
+        if not self.info.distro:
+            return None
         for path in self.get_cd_search_paths():
             path = abspath(path)
             if self.info.distro.is_valid_cd(path, self.info.check_arch):

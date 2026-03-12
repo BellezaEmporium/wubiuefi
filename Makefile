@@ -24,12 +24,11 @@ wubizip: wubi-pre-build
 	cp "$(PYTHON_DLL)" build/wubi
 	sh -c 'cd build && zip -r wubi.zip wubi'
 
-wubi-pre-build: check_winboot winboot2 src/main.py src/wubi/*.py cpuid version.py translations
+wubi-pre-build: check_winboot winboot2 src/main.py src/wubi/*.py version.py translations
 	/mnt/c/Python313/python.exe -m pip install -r requirements.txt
 	rm -rf build/wubi
 	rm -rf build/bin
 	cp -a blobs build/bin
-	cp build/cpuid/cpuid.dll build/bin
 
 pot:
 	xgettext --default-domain="$(PACKAGE)" --output="po/$(PACKAGE).pot" $(shell find src/wubi -name "*.py" | sort)
@@ -65,10 +64,6 @@ version.py:
 	sh -c 'echo "revision = $(REVISION)" >> build/version.py'
 	sh -c 'echo "application_name = \"$(PACKAGE)\"" >> build/version.py'
 
-cpuid: src/cpuid/cpuid.c
-	cp -rf src/cpuid build
-	sh -c 'cd build/cpuid && make'
-
 winboot2:
 	mkdir -p build/winboot build/winboot/EFI build/grubutil
 	cp -f data/wubildr.cfg data/wubildr-bootstrap.cfg build/winboot/
@@ -81,7 +76,7 @@ winboot2:
 		-m "build/winboot/wubildr.tar" \
 		-o "build/grubutil/core.img" \
 		loadenv biosdisk part_msdos part_gpt fat ntfs ext2 ntfscomp \
-		iso9660 loopback search linux boot minicmd cat cpuid chain \
+		iso9660 loopback search linux boot minicmd cat chain \
 		halt help ls reboot echo test configfile gzio normal sleep \
 		memdisk tar font gfxterm gettext true vbe vga video_bochs video_cirrus probe
 	sh -c "cat /usr/lib/grub/i386-pc/lnxboot.img \

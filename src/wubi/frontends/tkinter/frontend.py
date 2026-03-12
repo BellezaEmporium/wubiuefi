@@ -11,7 +11,6 @@ log = logging.getLogger("TkFrontend")
 
 
 class TkFrontend:
-
     def __init__(self, application):
         self.application = application
         self.current_page = None
@@ -63,6 +62,8 @@ class TkFrontend:
         self.application.on_quit()
 
     def show_page(self, page):
+        if self.application.info.quitting:
+            raise QuitException()
         if self.current_page is page:
             page.show()
             return
@@ -74,10 +75,30 @@ class TkFrontend:
         self.run()
 
     def show_installation_settings(self):
-        self.accessibility_page = AccessibilityPage(self)
-        self.installation_page = InstallationPage(self)
+        log.debug("show_installation_settings: creating InstallationPage")
+        try:
+            self.installation_page = InstallationPage(self)
+        except Exception:
+            import traceback
+            log.error("InstallationPage init failed:\n%s", traceback.format_exc())
+            self.show_error_message("No distributions available.")
+            self.application.quit()
+            return
+        if self.application.info.quitting:
+            return
         if not self.application.info.non_interactive:
-            self.show_page(self.installation_page)
+            self.accessibility_page = AccessibilityPage(self)
+            self.show_page(self.accessibility_page)
+
+    def show_cd_menu_page(self):
+        from .cd_menu_page import CDMenuPage
+        self.cd_menu_page = CDMenuPage(self)
+        self.show_page(self.cd_menu_page)
+
+    def show_cdboot_menu_page(self):
+        from .cdboot_page import CDBootPage
+        self.cdboot_menu_page = CDBootPage(self)
+        self.show_page(self.cdboot_menu_page)
 
     def show_uninstallation_settings(self):
         from .uninstallation_page import UninstallationPage

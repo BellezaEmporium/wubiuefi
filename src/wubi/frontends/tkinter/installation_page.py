@@ -95,10 +95,10 @@ class InstallationPage(Page):
         for d in self.info.distros:
             if d.name not in distros:
                 distros.append(d.name)
+        log.debug("populate_distro_list: distros=%s" % distros)
+        log.debug("populate_distro_list: distros_dict keys=%s" % list(self.info.distros_dict.keys())[:5])
         if not distros:
-            messagebox.showerror(_("Error"), _("No distributions are available."))
-            self.application.quit()
-            return
+            raise RuntimeError("No distributions are available.")
         self.distro_list["values"] = distros
         self._distro_var.set(distros[0])
         self.on_distro_change()
@@ -146,14 +146,16 @@ class InstallationPage(Page):
 
     def on_distro_change(self):
         name = self._distro_var.get()
+        arch = self.info.arch or "amd64"
+        log.info("on_distro_change: name=%r arch=%r dict_keys=%s" % (
+            name, arch, list(self.info.distros_dict.keys())[:3]))
         self.info.distro = (
-            self.info.distros_dict.get((name.lower(), self.info.arch))
+            self.info.distros_dict.get((name.lower(), arch))
             or self.info.distros_dict.get((name.lower(), "i386"))
+            or self.info.distros_dict.get((name.lower(), "amd64"))
         )
-        if not self.info.distro:
-            messagebox.showerror(_("Error"), _("Could not determine the selected distribution."))
-            self.application.quit()
-            return
+        log.info("on_distro_change: distro=%r" % self.info.distro)
+
         self.frontend.root.title(_("%s Installer") % self.info.distro.name)
         self.populate_drive_list()
 
