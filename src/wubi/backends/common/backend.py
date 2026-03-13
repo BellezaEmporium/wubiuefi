@@ -31,7 +31,7 @@ import functools
 from . import downloader, btdownloader
 import subprocess
 
-from .iso_verifier import fetch_and_verify
+from .iso_verifier import verify_iso
 from .tasklist import ThreadedTaskList, Task
 from .distro import Distro
 from .mappings import lang_country2linux_locale
@@ -49,11 +49,6 @@ class Backend(object):
     def __init__(self, application):
         self.application = application
         self.info = application.info
-        #~ if hasattr(sys,'frozen') and sys.frozen:
-            #~ root_dir = dirname(abspath(sys.executable))
-        #~ else:
-            #~ root_dir = ''
-        #~ self.info.root_dir = abspath(root_dir)
         self.info.temp_dir = join_path(self.info.root_dir, 'temp')
         self.info.data_dir = join_path(self.info.root_dir, 'data')
         self.info.bin_dir = join_path(self.info.root_dir, 'bin')
@@ -320,7 +315,7 @@ class Backend(object):
 
     def download_iso(self, associated_task=None):
         log.debug("No ISO found locally, downloading")
-        file_url = self.info.distro.iso_link
+        file_url = self.info.distro.iso_url
         iso_name = os.path.basename(file_url)
         save_as = os.path.join(self.info.install_dir, iso_name)
 
@@ -368,11 +363,11 @@ class Backend(object):
             # generic fallback: assume the ISO is in the same directory as the SHA256SUMS file
             base_url = "https://releases.ubuntu.com/%s" % self.info.distro.version
 
-        return fetch_and_verify(
+        return verify_iso(
             base_url=base_url,
             iso_path=iso_path,
             install_dir=self.info.install_dir,
-            web_proxy=self.info.web_proxy,
+            proxy=self.info.web_proxy,
             skip_gpg=self.info.skip_md5_check,
             associated_task=associated_task)
 

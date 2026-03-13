@@ -48,7 +48,14 @@ class WindowsBackend(Backend):
 
     def __init__(self, *args, **kargs):
         Backend.__init__(self, *args, **kargs)
-        self.info.iso_extractor = join_path(self.info.bin_dir, '7z.exe')
+        sevenzip = join_path(self.info.root_dir, 'blobs', '7z.exe')
+        sevenzip2 = join_path(self.info.bin_dir,  '7z.exe')
+        if os.path.isfile(sevenzip):
+            self.info.iso_extractor = sevenzip
+        elif os.path.isfile(sevenzip2):
+            self.info.iso_extractor = sevenzip2
+        else:
+            raise FileNotFoundError("7z.exe cannot be found. Please make sure it is included in the installation or placed in the same directory as the executable.")
         log.debug('7z=%s' % self.info.iso_extractor)
         self.cache = {}
 
@@ -837,7 +844,8 @@ class WindowsBackend(Backend):
         run_command(['attrib', '+R', '+S', '+H', configsys])
 
     def modify_bcd(self, drive, associated_task):
-        boot_drive = _decode(run_command([bcdedit, '/enum', '{bootmgr}']))
+        bcdedit = self._find_bcdedit()
+        boot_drive = self._decode(run_command([bcdedit, '/enum', '{bootmgr}']))
         if 'partition=' in boot_drive:        # ← fonctionne maintenant
             boot_drive = boot_drive[boot_drive.index('partition=') + 10:]
         log.debug("modify_bcd %s" % drive)
