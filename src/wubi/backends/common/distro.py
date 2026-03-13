@@ -5,7 +5,7 @@
 # This file is part of Wubi the Win32 Ubuntu Installer.
 #
 # Wubi is free software; you can redistribute it and/or modify
-# it under 5the terms of the GNU Lesser General Public License as
+# it under the terms of the GNU Lesser General Public License as
 # published by the Free Software Foundation; either version 2.1 of
 # the License, or (at your option) any later version.
 #
@@ -31,13 +31,15 @@ class Distro(object):
     cache = {}
 
     def __init__(
-            self, name, version, kernel, initrd,
-            info_file, arch, metalink, metalink2,
-            packages, size, md5sums, files_to_check,
-            metalink_md5sums, metalink_md5sums_signature,
-            backend, ordering, website, support, min_disk_space_mb,
-            min_memory_mb, installation_dir, diskimage=None, diskimage2=None,
-            min_iso_size=0, max_iso_size=0):
+        self, name, version, kernel, initrd,
+        info_file, arch, packages, size, md5sums, files_to_check,
+        backend, ordering, website, support, min_disk_space_mb,
+        min_memory_mb, installation_dir,
+        iso_url=None,
+        releases_url=None,
+        diskimage=None, diskimage2=None,
+        min_iso_size=0, max_iso_size=0,
+        **kwargs):
         self.name = name
         self.version = version
         self.arch = arch
@@ -50,11 +52,6 @@ class Distro(object):
         self.max_iso_size = max_iso_size and int(max_iso_size) or 0
         self.min_disk_space_mb = int(min_disk_space_mb)
         self.min_memory_mb = int(min_memory_mb)
-        self.metalink_md5sums = metalink_md5sums
-        self.metalink_md5sums_signature = metalink_md5sums_signature
-        self.metalink_url = metalink
-        self.metalink_url2 = metalink2
-        self.metalink = None
         self.packages = packages
         self.backend = backend
         self.ordering = ordering
@@ -63,12 +60,15 @@ class Distro(object):
         self.installation_dir = installation_dir
         self.diskimage = diskimage
         self.diskimage2 = diskimage2
-
+        self.iso_url = iso_url
+        self.releases_url = releases_url
         if isinstance(files_to_check, str):
             files_to_check = [
                 os.path.normpath(f.strip().lower())
                 for f in files_to_check.split(',')]
         self.files_to_check = files_to_check
+        if kwargs:
+            log.debug("Distro %s: unknown isolist fields ignored: %s" % (name, list(kwargs.keys())))
 
     def is_valid_cd(self, cd_path, check_arch):
         cd_path = os.path.abspath(cd_path)

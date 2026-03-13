@@ -22,7 +22,6 @@
 Check signature using openpgp and pgpy
 '''
 
-import os
 from .utils import read_file
 import pgpy
 

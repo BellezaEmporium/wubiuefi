@@ -5,7 +5,7 @@
 # This file is part of Wubi the Win32 Ubuntu Installer.
 #
 # Wubi is free software; you can redistribute it and/or modify
-# it under 5the terms of the GNU Lesser General Public License as
+# it under the terms of the GNU Lesser General Public License as
 # published by the Free Software Foundation; either version 2.1 of
 # the License, or (at your option) any later version.
 #
@@ -53,7 +53,6 @@ class Drive(object):
         filesystem = ""
         path = self.path[0] + ':\\'
         buf = ctypes.create_unicode_buffer(MAX_PATH)
-        # Utiliser la version Unicode (W) — obligatoire pour Win10+ et WSL2
         result = ctypes.windll.kernel32.GetVolumeInformationW(
             path, None, 0, None, None, None, buf, MAX_PATH)
         if result:

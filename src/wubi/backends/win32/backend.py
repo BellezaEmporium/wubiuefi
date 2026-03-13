@@ -5,7 +5,7 @@
 # This file is part of Wubi the Win32 Ubuntu Installer.
 #
 # Wubi is free software; you can redistribute it and/or modify
-# it under 5the terms of the GNU Lesser General Public License as
+# it under the terms of the GNU Lesser General Public License as
 # published by the Free Software Foundation; either version 2.1 of
 # the License, or (at your option) any later version.
 #
@@ -51,6 +51,11 @@ class WindowsBackend(Backend):
         self.info.iso_extractor = join_path(self.info.bin_dir, '7z.exe')
         log.debug('7z=%s' % self.info.iso_extractor)
         self.cache = {}
+
+    def _decode(self, output):
+        if isinstance(output, bytes):
+            return output.decode('utf-8', errors='replace')
+        return output or ""
 
     def fetch_host_info(self):
         log.debug("Fetching host info...")
@@ -832,6 +837,9 @@ class WindowsBackend(Backend):
         run_command(['attrib', '+R', '+S', '+H', configsys])
 
     def modify_bcd(self, drive, associated_task):
+        boot_drive = _decode(run_command([bcdedit, '/enum', '{bootmgr}']))
+        if 'partition=' in boot_drive:        # ← fonctionne maintenant
+            boot_drive = boot_drive[boot_drive.index('partition=') + 10:]
         log.debug("modify_bcd %s" % drive)
         if drive is self.info.system_drive \
         or drive.path == "C:" \

@@ -5,7 +5,7 @@
 # This file is part of Wubi the Win32 Ubuntu Installer.
 #
 # Wubi is free software; you can redistribute it and/or modify
-# it under 5the terms of the GNU Lesser General Public License as
+# it under the terms of the GNU Lesser General Public License as
 # published by the Free Software Foundation; either version 2.1 of
 # the License, or (at your option) any later version.
 #
@@ -25,7 +25,7 @@ IOCTL_STORAGE_EJECT_MEDIA = 0x2D4808
 def eject_cd(cd_path):
     if not cd_path:
         return
-    create_file = ctypes.windll.kernel32.CreateFileW  # W, pas A
+    create_file = ctypes.windll.kernel32.CreateFileW
     create_file.restype = ctypes.c_void_p
     cd_handle = create_file(
         "\\\\.\\%s" % cd_path[:2],

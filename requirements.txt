@@ -2,5 +2,5 @@
 pyinstaller
 modulegraph
 requests
-libtorrent
+aiotorrent
 PGPy13

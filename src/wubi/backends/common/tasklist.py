@@ -5,7 +5,7 @@
 # This file is part of Wubi the Win32 Ubuntu Installer.
 #
 # Wubi is free software; you can redistribute it and/or modify
-# it under 5the terms of the GNU Lesser General Public License as
+# it under the terms of the GNU Lesser General Public License as
 # published by the Free Software Foundation; either version 2.1 of
 # the License, or (at your option) any later version.
 #
@@ -389,7 +389,7 @@ class ThreadedTaskList(threading.Thread, TaskList):
         threading.Thread.__init__(self)
         TaskList.__init__(self, name=name, description=description, tasks=tasks, callback = callback)
         self._stopped_event = threading.Event()
-        self.daemon = True #do not prevent the main application from closing
+        self.daemon = True
 
     def cancel(self):
         self._stopped_event.set()
