@@ -6,7 +6,19 @@ tk_datas = collect_data_files('tkinter')
 tcl_path = os.path.join(sys.prefix, 'tcl')
 tk_path  = os.path.join(sys.prefix, 'Lib', 'tkinter')
 
-hiddenimports = collect_submodules('wubi')
+hiddenimports = (
+    collect_submodules('wubi')
+    + collect_submodules('aiotorrent')
+    + collect_submodules('bitstring')
+    + collect_submodules('bitarray')
+    + [
+        'bitstring.bitstore_bitarray',
+        'bitstring.bitstore',
+        'bitarray',
+        'bitarray._bitarray',
+        'fastbencode',
+    ]
+)
 
 datas=[
     ('data', 'data'),

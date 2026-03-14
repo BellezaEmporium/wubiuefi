@@ -22,6 +22,7 @@ import sys
 import os
 import ctypes
 import platform
+import re
 from .drive import Drive
 from .virtualdisk import create_virtual_disk
 from .eject import eject_cd
@@ -36,6 +37,8 @@ import shutil
 import logging
 import tempfile
 import struct
+import lzma
+import threading
 log = logging.getLogger('WindowsBackend')
 
 from gettext import gettext as _
@@ -481,32 +484,80 @@ class WindowsBackend(Backend):
             return output_file
 
     def extract_diskimage(self, associated_task=None):
-        # TODO: try to pipe download stream into this.
         sevenzip = self.info.iso_extractor
         xz = self.dimage_path
-        tarball = os.path.basename(self.dimage_path).strip('.xz')
-        # 7-zip needs 7z.dll to read the xz format.
-        dec_xz = [sevenzip, 'e', '-i!' + tarball, '-so', xz]
+        assert isinstance(xz, str), "dimage_path must be a string path"
         dec_tar = [sevenzip, 'e', '-si', '-ttar', '-o' + self.info.disks_dir]
-        dec_xz_subp = spawn_command(dec_xz)
-        dec_tar_subp = spawn_command(dec_tar, stdin=dec_xz_subp.stdout)
-        dec_xz_subp.stdout.close()
-        dec_tar_subp.communicate()
+        dec_tar_subp = spawn_command(dec_tar)
+
+        def _decompress_and_pipe():
+            assert dec_tar_subp.stdin is not None, "subprocess stdin pipe unavailable"
+            try:
+                with lzma.open(xz) as f_in:
+                    shutil.copyfileobj(f_in, dec_tar_subp.stdin)
+            except Exception as e:
+                log.error('Decompression error: %s' % e)
+            finally:
+                dec_tar_subp.stdin.close()
+
+        def _drain(stream):
+            try:
+                stream.read()
+            except Exception:
+                pass
+
+        t_write = threading.Thread(target=_decompress_and_pipe)
+        t_out   = threading.Thread(target=_drain, args=(dec_tar_subp.stdout,))
+        t_err   = threading.Thread(target=_drain, args=(dec_tar_subp.stderr,))
+        for t in (t_write, t_out, t_err):
+            t.start()
+        for t in (t_write, t_out, t_err):
+            t.join()
+        dec_tar_subp.wait()
         if dec_tar_subp.returncode != 0:
             raise Exception('Extraction failed with code: %d' %
                               dec_tar_subp.returncode)
-        # TODO: Checksum: http://tukaani.org/xz/xz-file-format.txt
-        # Only remove downloaded image
+        # Only remove downloaded image if it was fetched, not user-supplied
         if not self.info.dimage_path:
             os.remove(xz)
 
     def expand_diskimage(self, associated_task=None):
-        # TODO: might use -p to get percentage to feed into progress.
         root = join_path(self.info.disks_dir, 'root.disk')
         resize2fs = join_path(self.info.bin_dir, 'resize2fs.exe')
-        resize_cmd = [resize2fs, '-f', root,
-                      '%dM' % self.info.root_size_mb]
-        run_command(resize_cmd)
+        if not associated_task:
+            run_command([resize2fs, '-f', root, '%dM' % self.info.root_size_mb])
+            return
+        # -p makes resize2fs write progress percentages to stderr as
+        # carriage-return-separated fragments: "  12.34%  \r  56.78%  \r..."
+        resize_cmd = [resize2fs, '-p', '-f', root, '%dM' % self.info.root_size_mb]
+        associated_task.size = 100
+        associated_task.set_progress(0)
+        proc = spawn_command(resize_cmd)
+        assert proc.stdout is not None and proc.stderr is not None
+        proc_stdout, proc_stderr = proc.stdout, proc.stderr
+        # Drain stdout in a background thread to avoid pipe deadlock.
+        threading.Thread(target=proc_stdout.read, daemon=True).start()
+        buf = ''
+        cancelled = False
+        for raw in iter(lambda: proc_stderr.read(1), b''):
+            ch = raw.decode('utf-8', 'replace')
+            if ch in ('\r', '\n'):
+                m = re.search(r'(\d+(?:\.\d+)?)\s*%', buf)
+                if m:
+                    pct = min(float(m.group(1)), 99.0)
+                    if associated_task.set_progress(pct):
+                        cancelled = True
+                        proc.terminate()
+                        break
+                buf = ''
+            else:
+                buf += ch
+        proc.wait()
+        if cancelled:
+            return
+        if proc.returncode != 0:
+            raise Exception('resize2fs failed with code: %d' % proc.returncode)
+        associated_task.set_progress(100)
 
     def create_swap_diskimage(self, associated_task=None):
         path = join_path(self.info.disks_dir, 'swap.disk')
@@ -560,16 +611,19 @@ class WindowsBackend(Backend):
             return self.cache[iso_path]
         else:
             self.cache[iso_path] = None
-        command = [self.info.iso_extractor,'l',iso_path]
+        command = [self.info.iso_extractor, 'l', iso_path]
         try:
             output = run_command(command)
         except Exception as err:
             log.exception(err)
             log.debug('command >>%s' % ' '.join(command))
             output = None
-        if not output: return []
-        if isinstance(output, bytes):
-            output = output.decode('utf-8', 'ignore')
+        if not output:
+            return []
+        if isinstance(output, (bytes, bytearray, memoryview)):
+            output = bytes(output).decode('utf-8', 'ignore')
+        else:
+            output = str(output)
 
         lines = output.split(os.linesep)
         start = None
@@ -631,45 +685,59 @@ class WindowsBackend(Backend):
      
     def modify_EFI_folder(self, associated_task,bcdedit):
         command = [bcdedit, '/enum', '{bootmgr}']
-        boot_drive = run_command(command)
+        boot_drive_output = run_command(command)
+        if isinstance(boot_drive_output, (bytes, bytearray, memoryview)):
+            boot_drive = bytes(boot_drive_output).decode('utf-8', errors='ignore')
+        else:
+            boot_drive = str(boot_drive_output or '')
+
         if 'partition=' in boot_drive:
-            boot_drive = boot_drive[boot_drive.index('partition=')+10:]
+            boot_drive = boot_drive.split('partition=', 1)[1]
         else:
-            boot_drive = boot_drive[boot_drive.index('device')+24:]
-        boot_drive = boot_drive[:boot_drive.index('\r')]
+            device_pos = boot_drive.find('device')
+            if device_pos != -1:
+                boot_drive = boot_drive[device_pos + len('device'):]
+                if 'partition=' in boot_drive:
+                    boot_drive = boot_drive.split('partition=', 1)[1]
+        boot_drive = boot_drive.strip().splitlines()[0] if boot_drive.strip() else ''
+        boot_drive = boot_drive.split()[0] if boot_drive else ''
         log.debug("EFI boot partition %s" % boot_drive)
-        # if EFI boot partition is mounted we use it
-        if boot_drive[1]==':':
-            efi_drive = boot_drive
+
+        mounted_temporarily = False
+        if len(boot_drive) >= 2 and boot_drive[1] == ':':
+            efi_drive = boot_drive[:2]
         else:
-            for efi_drive in 'HIJKLMNOPQRSTUVWXYZ':
-                drive = Drive(efi_drive)
-                if not drive.type:
+            free_letter = None
+            for candidate in 'HIJKLMNOPQRSTUVWXYZ':
+                if not Drive(candidate).type:
+                    free_letter = candidate
                     break
-            efi_drive = efi_drive + ':'
+            if not free_letter:
+                raise Exception('No free drive letter available for EFI mount')
+            efi_drive = free_letter + ':'
+            mounted_temporarily = True
             log.debug("Temporary EFI drive %s" % efi_drive)
-        if efi_drive != boot_drive:
+
+        if mounted_temporarily:
             run_command(['mountvol', efi_drive, '/s'])
-        src = join_path(self.info.root_dir, 'winboot','EFI')
-        src.replace(' ', '_')
-        src.replace('__', '_')
-        dest = join_path(efi_drive, 'EFI',self.info.target_dir[3:])
-        dest.replace(' ', '_')
-        dest.replace('__', '_')
-        if not os.path.exists(dest):
-            shutil.os.mkdir(dest)
-        dest = join_path(dest,'wubildr')
-        if os.path.exists(dest):
-            shutil.rmtree(dest)        
-        log.debug('Copying EFI folder %s -> %s' % (src, dest))
-        shutil.copytree(src,  dest)
-        if self.get_efi_arch(associated_task,efi_drive)=="ia32":
-            efi_path = join_path(dest, 'grubia32.efi')[2:]
-        else:
-            efi_path = join_path(dest, 'shimx64.efi')[2:]
-        if efi_drive != boot_drive:
-            run_command(['mountvol', efi_drive, '/d'])
-        return efi_path
+        try:
+            src = join_path(self.info.root_dir, 'winboot', 'EFI')
+            target_name = self.info.target_dir[3:].replace(' ', '_').replace('__', '_')
+            dest_root = join_path(efi_drive, 'EFI', target_name)
+            os.makedirs(dest_root, exist_ok=True)
+            dest = join_path(dest_root, 'wubildr')
+            if os.path.exists(dest):
+                shutil.rmtree(dest)
+            log.debug('Copying EFI folder %s -> %s' % (src, dest))
+            shutil.copytree(src, dest)
+            if self.get_efi_arch(associated_task, efi_drive) == "ia32":
+                efi_path = join_path(dest, 'grubia32.efi')[2:]
+            else:
+                efi_path = join_path(dest, 'shimx64.efi')[2:]
+            return efi_path
+        finally:
+            if mounted_temporarily:
+                run_command(['mountvol', efi_drive, '/d'])
 
     def get_efi_arch(self, associated_task, efi_drive):
         machine=0
@@ -695,23 +763,26 @@ class WindowsBackend(Backend):
         return efi_arch
 
     def undo_EFI_folder(self, associated_task):
-        for efi_drive in 'HIJKLMNOPQRSTUVWXYZ':
-            drive = Drive(efi_drive)
-            if not drive.type:
+        free_letter = None
+        for candidate in 'HIJKLMNOPQRSTUVWXYZ':
+            if not Drive(candidate).type:
+                free_letter = candidate
                 break
-        efi_drive = efi_drive + ':'
+        if not free_letter:
+            log.error('No free drive letter available for EFI mount')
+            return
+        efi_drive = free_letter + ':'
         log.debug("Temporary EFI drive %s" % efi_drive)
-        try: 
+        try:
             run_command(['mountvol', efi_drive, '/s'])
-            dest = join_path(efi_drive, 'EFI',self.info.previous_target_dir[3:],'wubildr')
-            dest.replace(' ', '_')
-            dest.replace('__', '_')
+            target_name = self.info.previous_target_dir[3:].replace(' ', '_').replace('__', '_')
+            dest = join_path(efi_drive, 'EFI', target_name, 'wubildr')
             if os.path.exists(dest):
                 log.debug('Removing EFI folder %s' % dest)
                 shutil.rmtree(dest)
             run_command(['mountvol', efi_drive, '/d'])
         except Exception as err: #this shouldn't be fatal
-            log.error(err)            
+            log.error(err)
         return
 
     def modify_bootloader(self, associated_task):
@@ -766,8 +837,15 @@ class WindowsBackend(Backend):
         old_line = boot_line[:boot_line.index("=")].strip().lower()
         # ConfigParser gets confused by the ':' and changes the options order
         content = read_file(bootini)
-        if content[-1] != '\n':
-            content += '\n'
+        if not content:
+            content = ''
+        if content and ((isinstance(content, bytes) and content[-1:] != b'\n') or (isinstance(content, str) and content[-1] != '\n')):
+            if isinstance(content, bytes):
+                content += b'\n'
+            else:
+                content += '\n'
+        if isinstance(content, (bytes, bytearray, memoryview)):
+            content = bytes(content).decode('utf-8', errors='ignore')
         lines = content.split('\n')
         is_section = False
         for i,line in enumerate(lines):
@@ -781,6 +859,17 @@ class WindowsBackend(Backend):
             if is_section and not line.strip():
                 lines.insert(i, boot_line)
                 break
+        # Ensure all lines are strings before joining
+        def to_str(line):
+            if isinstance(line, bytes):
+                return line.decode('utf-8', errors='ignore')
+            elif isinstance(line, memoryview):
+                return line.tobytes().decode('utf-8', errors='ignore')
+            elif isinstance(line, bytearray):
+                return line.decode('utf-8', errors='ignore')
+            else:
+                return str(line)
+        lines = [to_str(line) for line in lines]
         content = '\n'.join(lines)
         write_file(bootini, content)
         run_command(['attrib', '+R', '+S', '+H', bootini])
@@ -804,8 +893,8 @@ class WindowsBackend(Backend):
         shutil.copyfile(src,  dest)
         run_command(['attrib', '-R', '-S', '-H', configsys])
         config = read_file(configsys)
-        if isinstance(config, bytes):
-            config = config.decode('utf-8')
+        if isinstance(config, (bytes, bytearray, memoryview)):
+            config = bytes(config).decode('utf-8', errors='ignore')
         if not config:
             config = ''
         if 'REM WUBI MENU START\n' in config:
@@ -835,6 +924,10 @@ class WindowsBackend(Backend):
             return
         run_command(['attrib', '-R', '-S', '-H', configsys])
         config = read_file(configsys)
+        if not config:
+            config = ''
+        if isinstance(config, (bytes, bytearray, memoryview)):
+            config = bytes(config).decode('utf-8', errors='ignore')
         s = config.find('REM WUBI MENU START\n')
         e = config.find('REM WUBI MENU END\n')
         if s > 0 and e > 0:
@@ -843,15 +936,32 @@ class WindowsBackend(Backend):
         write_file(configsys, config)
         run_command(['attrib', '+R', '+S', '+H', configsys])
 
+    def contains_partition(self, value: str | bytearray | memoryview) -> bool:
+        if isinstance(value, str):
+            text = value
+        elif isinstance(value, memoryview):
+            text = value.tobytes().decode("utf-8", errors="ignore")
+        else:
+            text = bytes(value).decode("utf-8", errors="ignore")
+
+        return "partition=" in text
+
     def modify_bcd(self, drive, associated_task):
         bcdedit = self._find_bcdedit()
-        boot_drive = self._decode(run_command([bcdedit, '/enum', '{bootmgr}']))
-        if 'partition=' in boot_drive:        # ← fonctionne maintenant
-            boot_drive = boot_drive[boot_drive.index('partition=') + 10:]
+        boot_drive_out = run_command([bcdedit, '/enum', '{bootmgr}'])
+        if isinstance(boot_drive_out, (bytes, bytearray, memoryview)):
+            boot_drive = bytes(boot_drive_out).decode('utf-8', 'ignore')
+        else:
+            boot_drive = str(boot_drive_out or '')
+        if self.contains_partition(boot_drive):
+            idx = boot_drive.find('partition=')
+            if idx != -1:
+                boot_drive = boot_drive[idx + len('partition='):]
         log.debug("modify_bcd %s" % drive)
+        system_drive = (os.getenv('SystemDrive') or '').upper()
         if drive is self.info.system_drive \
         or drive.path == "C:" \
-        or drive.path == os.getenv('SystemDrive').upper() \
+        or (system_drive and drive.path == system_drive) \
         or drive.path == self.info.target_drive.path:
             src = join_path(self.info.root_dir, 'winboot', 'wubildr')
             dest = join_path(drive.path, 'wubildr')
@@ -859,13 +969,16 @@ class WindowsBackend(Backend):
             src = join_path(self.info.root_dir, 'winboot', 'wubildr.mbr')
             dest = join_path(drive.path, 'wubildr.mbr')
             shutil.copyfile(src,  dest)
-        bcdedit = join_path(os.getenv('SystemDrive'), 'bcdedit.exe')
+
+        bcdedit = ''
+        if system_drive:
+            bcdedit = join_path(system_drive, 'bcdedit.exe')
         if not os.path.isfile(bcdedit):
-            bcdedit = join_path(os.environ['systemroot'], 'sysnative', 'bcdedit.exe')
+            bcdedit = join_path(os.environ.get('systemroot', ''), 'sysnative', 'bcdedit.exe')
         # FIXME: Just test for bcdedit in the PATH.  What's the Windows
         # equivalent of `type`?
         if not os.path.isfile(bcdedit):
-            bcdedit = join_path(os.environ['systemroot'], 'System32', 'bcdedit.exe')
+            bcdedit = join_path(os.environ.get('systemroot', ''), 'System32', 'bcdedit.exe')
         if not os.path.isfile(bcdedit):
             log.error("Cannot find bcdedit")
             return
@@ -881,9 +994,16 @@ class WindowsBackend(Backend):
             except Exception as err: #this shouldn't be fatal
                 log.error(err)
             command = [bcdedit, '/copy', '{bootmgr}', '/d', '%s' % self.info.distro.name]
-            id = run_command(command)
-            id = id.decode('utf-8') if isinstance(id, bytes) else id
-            id = id[id.index('{') : id.index('}') + 1]
+            id_out = run_command(command)
+            if isinstance(id_out, (bytes, bytearray, memoryview)):
+                id_text = bytes(id_out).decode('utf-8', 'ignore')
+            else:
+                id_text = str(id_out or '')
+            match = re.search(r'\{[^\}]+\}', id_text)
+            if match:
+                id = match.group(0)
+            else:
+                raise Exception("Could not extract BCD entry ID from output: %s" % id_text)
             run_command([bcdedit, '/set', id, 'path', efi_path])
             try:
                 run_command([bcdedit, '/set', '{fwbootmgr}', 'displayorder', id, '/addlast'])
@@ -899,9 +1019,15 @@ class WindowsBackend(Backend):
             return
 
         command = [bcdedit, '/create', '/d', '%s' % self.info.distro.name, '/application', 'bootsector']
-        id = run_command(command)
-        id = id.decode('utf-8') if isinstance(id, bytes) else id
-        id = id[id.index('{') : id.index('}') + 1]
+        id_out = run_command(command)
+        if isinstance(id_out, (bytes, bytearray, memoryview)):
+            id_text = bytes(id_out).decode('utf-8', 'ignore')
+        else:
+            id_text = str(id_out or '')
+        match = re.search(r'\{[^\}]+\}', id_text)
+        if not match:
+            raise Exception("Could not extract BCD entry ID from output: %s" % id_text)
+        id = match.group(0)
         mbr_path = join_path(self.info.target_dir, 'winboot', 'wubildr.mbr')[2:]
         run_command([bcdedit, '/set', id, 'device', 'partition=%s' % self.info.target_drive.path])
         run_command([bcdedit, '/set', id, 'path', mbr_path])
