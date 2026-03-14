@@ -1,0 +1,3 @@
+# Tests requirements
+pytest
+Twisted

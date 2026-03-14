@@ -560,6 +560,10 @@ class Backend(object):
     def create_preseed_diskimage(self):
         source = join_path(self.info.data_dir, 'preseed.disk')
         template = read_file(source)
+        if template is None:
+            raise Exception("Could not read preseed template file: %s" % source)
+        if isinstance(template, (bytes, bytearray, memoryview)):
+            template = bytes(template).decode('utf-8', errors='ignore')
         password = md5_password(self.info.password)
         dic = dict(
             timezone = self.info.timezone,
@@ -571,7 +575,7 @@ class Backend(object):
             username = self.info.username)
         for k,v in list(dic.items()):
             k = "$(%s)" % k
-            template = template.replace(k, v)
+            template = template.replace(k, v if v is not None else "")
         preseed_file = join_path(self.info.install_dir, "preseed.cfg")
         write_file(preseed_file, template)
 
@@ -589,6 +593,8 @@ class Backend(object):
         if not os.path.exists(template_file):
             template_file = join_path(self.info.data_dir, 'preseed.lupin')
         template = read_file(template_file)
+        if isinstance(template, (bytes, bytearray, memoryview)):
+            template = bytes(template).decode('utf-8', errors='ignore')
         if not template:
             raise Exception("Could not read preseed template file: %s" % template_file)
         if self.info.distro.packages:
@@ -634,7 +640,7 @@ class Backend(object):
         content = template
         for k,v in list(dic.items()):
             k = "$(%s)" % k
-            content = content.replace(k, v)
+            content = content.replace(k, v if v is not None else "")
         preseed_file = join_path(self.info.custominstall, "preseed.cfg")
         write_file(preseed_file, content)
 
@@ -739,6 +745,8 @@ class Backend(object):
         template = read_file(template_file)
         if template is None:
             raise Exception("Could not read grub template file: %s" % template_file)
+        if isinstance(template, (bytes, bytearray, memoryview)):
+            template = bytes(template).decode('utf-8', errors='ignore')
         isopath = unix_path(self.info.iso_path) if self.info.iso_path else ""
         rootflags = "rootflags=sync"
         dic = dict(
@@ -765,7 +773,7 @@ class Backend(object):
         content = template
         for k,v in list(dic.items()):
             k = "$(%s)" % k
-            content = content.replace(k, v)
+            content = content.replace(k, v if v is not None else "")
         grub_config_file = join_path(self.info.install_boot_dir, "grub", "grub.cfg")
         write_file(grub_config_file, content)
 
@@ -823,8 +831,7 @@ class Backend(object):
         for distro in isolist.sections():
             log.debug('  Adding distro %s' % distro)
             kargs = dict(isolist.items(distro))
-            kargs['backend'] = self
-            distros.append(Distro(**kargs))
+            distros.append(Distro(backend=self, **kargs))
             #order is lost in configparser, use the ordering attribute
         def compfunc(x, y):
             if x.ordering == y.ordering:

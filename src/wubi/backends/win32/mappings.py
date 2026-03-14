@@ -483,3 +483,18 @@ n2fulllanguage = {
     1058 : "Ukrainian",
 }
 
+distro2installer = {
+    "ubuntu":                   "subiquity",
+    "ubuntu-server":            "subiquity",
+    "ubuntu-server-minimal":    "subiquity",
+    "ubuntu-desktop-minimal":   "subiquity",
+    "kubuntu":                  "calamares",
+    "xubuntu":                  "calamares",
+    "lubuntu":                  "calamares",
+    "ubuntu-mate":              "calamares",
+    "ubuntu-budgie":            "calamares",
+    "ubuntu-studio":            "calamares",
+    "ubuntu-unity":             "calamares",
+    "edubuntu":                 "calamares",
+}
+

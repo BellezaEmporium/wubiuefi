@@ -22,6 +22,7 @@ import os
 from .utils import read_file
 import logging
 import re
+from typing import Union
 
 log = logging.getLogger('Distro')
 disk_info_re = re.compile(r'(?P<name>[\w\s-]+) (?P<version>[\w.]+)(?: LTS)?(?: (?:[\"\(])?(?P<codename>[\w\s-]+)(?:[\"\)])?)? - (?P<subversion>[\D]+)? (?P<arch>i386|amd64)(?:[\D]+)?(?P<build>[\d:.-]+)?')
@@ -38,7 +39,7 @@ class Distro(object):
         iso_url=None,
         releases_url=None,
         diskimage=None, diskimage2=None,
-        min_iso_size=0, max_iso_size=0,
+        min_iso_size: Union[str, int] = 0, max_iso_size: Union[str, int] = 0,
         **kwargs):
         self.name = name
         self.version = version

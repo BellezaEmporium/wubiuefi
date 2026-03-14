@@ -1,0 +1,43 @@
+# wubiuefi Subiquity installation parameters for Ubuntu 24.04 and later.
+# most of it is taken from the official Ubuntu installation documentation
+# see https://canonical-subiquity.readthedocs-hosted.com/en/latest/reference/autoinstall-reference.html
+# for more details on the parameters.
+autoinstall:
+  version: 1
+
+  locale: $(locale)
+
+  keyboard:
+    layout: $(keyboard_layout)
+    variant: $(keyboard_variant)
+
+  timezone: $(timezone)
+
+  identity:
+    realname: $(realname)
+    hostname: $(hostname)
+    username: $(username)
+    password: $(hashed_password)
+
+  ssh:
+    install-server: false
+
+  source:
+    id: $(source_id)
+    search_drivers: true
+
+  storage:
+    layout:
+      name: direct
+      ptable: msdos
+
+  apt:
+    geoip: true
+    mirror-selection:
+      primary:
+        - country-mirror
+        - uri: "http://archive.ubuntu.com/ubuntu"
+          arches: [i386, amd64]
+
+  error-commands:
+    - tar -czf /installer-logs.tar.gz /var/log/installer/

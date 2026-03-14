@@ -9,6 +9,7 @@ EMAIL = agostino.russo@gmail.com
 
 # Adapted from the original Makefile, for Debian under WSL.
 # Adapt the PYTHON_WIN variable to point to your version of Python, be it version whatever.
+# as long as it's Python 3 or later, it should be fine.
 PYTHON_WIN = /mnt/c/Python313/python.exe 
 
 all: build check
@@ -103,19 +104,18 @@ grubutil: src/grubutil/grubinst/*
 runbin: wubi
 	rm -rf build/test
 	mkdir build/test
-	sh -c 'cd build/test && ../../tools/wine ../wubi --test'
+	sh -c 'cd build/test && ../wubi --test'
 
 check_winboot: tools/check_winboot
-	tools/check_winboot
 
 unittest:
-	tools/pywine tools/test
+	tools/test
 
 check: wubi
 	PYTHONPATH=src $(PYTHON_WIN) tests/run
 
 runpy:
-	sh -c 'PYTHONPATH=src tools/pywine src/main.py --test'
+	sh -c 'PYTHONPATH=src src/main.py --test'
 
 clean:
 	rm -rf dist/*

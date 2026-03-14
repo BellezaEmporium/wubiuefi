@@ -23,6 +23,7 @@ import os
 import ctypes
 import platform
 import re
+import textwrap
 from .drive import Drive
 from .virtualdisk import create_virtual_disk
 from .eject import eject_cd
@@ -66,6 +67,24 @@ class WindowsBackend(Backend):
         if isinstance(output, bytes):
             return output.decode('utf-8', errors='replace')
         return output or ""
+    
+    def get_source_id(self):
+        """
+        Returns the correct Subiquity source ID based on the distro name.
+        Ubuntu Desktop = ubuntu-desktop, Ubuntu Server = ubuntu-server, etc.
+        """
+        distro = self.info.distro.name.lower()
+        
+        source_map = {
+            "ubuntu":           "ubuntu-desktop",
+            "ubuntu-server":    "ubuntu-server",
+            "ubuntu-server-minimal": "ubuntu-server-minimal",
+            "ubuntu-desktop-minimal": "ubuntu-desktop-minimal",
+        }
+        
+        source_id = source_map.get(distro, "ubuntu-desktop")
+        log.debug("source_id: %s" % source_id)
+        return source_id
 
     def fetch_host_info(self):
         log.debug("Fetching host info...")
@@ -89,6 +108,8 @@ class WindowsBackend(Backend):
         drives = [(d.path[:2].lower(), d) for d in self.info.drives]
         self.info.drives_dict = dict(drives)
         self.info.efi = self.check_EFI()
+        self.info.source_id = self.get_source_id()
+        self.info.installer_type = self.get_installer_type()
 
     def check_secure_boot(self):
         """Checks if the computer has Secure Boot enabled. 
@@ -167,18 +188,82 @@ class WindowsBackend(Backend):
         command = ['shutdown', '-r', '-t', '00']
         run_command(command) #TBD make async
 
+    def create_subiquity_autoinstall(self):
+        autoinstall_dir = join_path(self.info.custom_install, "autoinstall")
+        if not os.path.exists(autoinstall_dir):
+            os.makedirs(autoinstall_dir)
+
+        autoinstall_content = textwrap.dedent("""\
+        autoinstall:
+        version: 1
+        locale: {locale}
+        keyboard:
+            layout: {keyboard_layout}
+            variant: {keyboard_variant}
+        timezone: {timezone}
+        identity:
+            realname: {realname}
+            hostname: {hostname}
+            username: {username}
+            password: {hashed_password}
+        ssh:
+            install-server: false
+        source:
+            id: {source_id}
+            search_drivers: true
+        storage:
+            layout:
+            name: direct
+            ptable: msdos
+        apt:
+            geoip: true
+            mirror-selection:
+            primary:
+                - country-mirror
+                - uri: "http://archive.ubuntu.com/ubuntu"
+                arches: [i386, amd64]
+        error-commands:
+            - tar -czf /installer-logs.tar.gz /var/log/installer/
+        """).format(
+            locale=self.info.locale,
+            keyboard_layout=self.info.keyboard_layout,
+            keyboard_variant=self.info.keyboard_variant or "",
+            timezone=self.info.timezone,
+            realname=self.info.user_full_name,
+            hostname=self.info.hostname,
+            username=self.info.host_username,
+            hashed_password=self.info.hashed_password,
+            source_id=self.info.source_id,
+        )
+
+        write_file(join_path(autoinstall_dir, "user-data"), autoinstall_content)
+        write_file(join_path(autoinstall_dir, "meta-data"), "")  # required by cloud-init but can be empty
+
+    def create_calamares_autoinstall(self):
+        # Calamares doesn't need autoinstall files 
+        # as it will get all the needed information from the kernel parameters passed to it,
+        # and the autoinstall configuration is done by passing a custom calamares configuration file 
+        # with the appropriate modules enabled and configured. 
+        # See data/calamares-auto.yaml for an example of such a configuration file.
+        log.debug("Distro uses Calamares installer, no autoinstall file will be created.")
+        pass
+
     def copy_installation_files(self, associated_task):
-        self.info.custominstall = join_path(self.info.install_dir, 'custom-installation')
+        self.info.custom_install = join_path(self.info.install_dir, 'custom-installation')
         src = join_path(self.info.data_dir, 'custom-installation')
-        dest = self.info.custominstall
+        dest = self.info.custom_install
         log.debug('Copying %s -> %s' % (src, dest))
         shutil.copytree(src, dest)
+        if self.info.installer_type == "subiquity":
+            self.create_subiquity_autoinstall()
+        else:
+            self.create_calamares_autoinstall()
         src = join_path(self.info.root_dir, 'winboot')
         if isdir(src): # make runpy will fail otherwise as winboot will not be there
             dest = join_path(self.info.target_dir, 'winboot')
             log.debug('Copying %s -> %s' % (src, dest))
             shutil.copytree(src, dest)
-        dest = join_path(self.info.custominstall, 'hooks', 'failure-command.sh')
+        dest = join_path(self.info.custom_install, 'hooks', 'failure-command.sh')
         msg=_('The installation failed. Logs have been saved in: %s.' \
             '\n\nNote that in verbose mode, the logs may include the password.' \
             '\n\nThe system will now reboot.')
@@ -585,6 +670,12 @@ class WindowsBackend(Backend):
                 pass
         os.unlink(src)
 
+    def get_installer_type(self):
+        distro = self.info.distro.name.lower()
+        installer = mappings.distro2installer.get(distro, "calamares")
+        log.debug("installer_type: %s" % installer)
+        return installer
+
     def get_usb_search_paths(self):
         '''
         Used to detect ISOs in USB keys
@@ -654,6 +745,10 @@ class WindowsBackend(Backend):
         """Gets the path to bcdedit.exe, which is needed for EFI detection and modification. 
         On 64-bit Windows, 32-bit applications are redirected to SysWOW64, so we need to check both 
         System32 and sysnative."""
+        path_candidate = shutil.which('bcdedit.exe')
+        if path_candidate and os.path.isfile(path_candidate):
+            return path_candidate
+
         candidates = [
             join_path(os.environ.get('SystemRoot', r'C:\Windows'), 'System32', 'bcdedit.exe'),
             join_path(os.environ.get('SystemRoot', r'C:\Windows'), 'sysnative', 'bcdedit.exe'),
@@ -836,16 +931,11 @@ class WindowsBackend(Backend):
         boot_line = 'C:\\wubildr.mbr = "%s"' % self.info.distro.name
         old_line = boot_line[:boot_line.index("=")].strip().lower()
         # ConfigParser gets confused by the ':' and changes the options order
-        content = read_file(bootini)
-        if not content:
-            content = ''
-        if content and ((isinstance(content, bytes) and content[-1:] != b'\n') or (isinstance(content, str) and content[-1] != '\n')):
-            if isinstance(content, bytes):
-                content += b'\n'
-            else:
-                content += '\n'
+        content = read_file(bootini) or ''
         if isinstance(content, (bytes, bytearray, memoryview)):
             content = bytes(content).decode('utf-8', errors='ignore')
+        if content and content[-1] != '\n':
+            content += '\n'
         lines = content.split('\n')
         is_section = False
         for i,line in enumerate(lines):
@@ -859,17 +949,6 @@ class WindowsBackend(Backend):
             if is_section and not line.strip():
                 lines.insert(i, boot_line)
                 break
-        # Ensure all lines are strings before joining
-        def to_str(line):
-            if isinstance(line, bytes):
-                return line.decode('utf-8', errors='ignore')
-            elif isinstance(line, memoryview):
-                return line.tobytes().decode('utf-8', errors='ignore')
-            elif isinstance(line, bytearray):
-                return line.decode('utf-8', errors='ignore')
-            else:
-                return str(line)
-        lines = [to_str(line) for line in lines]
         content = '\n'.join(lines)
         write_file(bootini, content)
         run_command(['attrib', '+R', '+S', '+H', bootini])
@@ -970,16 +1049,9 @@ class WindowsBackend(Backend):
             dest = join_path(drive.path, 'wubildr.mbr')
             shutil.copyfile(src,  dest)
 
-        bcdedit = ''
-        if system_drive:
-            bcdedit = join_path(system_drive, 'bcdedit.exe')
-        if not os.path.isfile(bcdedit):
-            bcdedit = join_path(os.environ.get('systemroot', ''), 'sysnative', 'bcdedit.exe')
-        # FIXME: Just test for bcdedit in the PATH.  What's the Windows
-        # equivalent of `type`?
-        if not os.path.isfile(bcdedit):
-            bcdedit = join_path(os.environ.get('systemroot', ''), 'System32', 'bcdedit.exe')
-        if not os.path.isfile(bcdedit):
+        try:
+            bcdedit = self._find_bcdedit()
+        except FileNotFoundError:
             log.error("Cannot find bcdedit")
             return
         if registry.get_value('HKEY_LOCAL_MACHINE', self.info.registry_key, 'VistaBootDrive'):
