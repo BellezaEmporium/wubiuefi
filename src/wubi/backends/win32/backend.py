@@ -110,6 +110,8 @@ class WindowsBackend(Backend):
         self.info.efi = self.check_EFI()
         self.info.source_id = self.get_source_id()
         self.info.installer_type = self.get_installer_type()
+        self.info.previous_target_dir  = self.get_previous_target_dir()
+        self.info.previous_distro_name = self.get_previous_distro_name()
 
     def check_secure_boot(self):
         """Checks if the computer has Secure Boot enabled. 
