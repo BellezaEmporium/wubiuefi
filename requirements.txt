@@ -4,3 +4,4 @@ modulegraph
 requests
 aiotorrent
 PGPy13
+pywin32

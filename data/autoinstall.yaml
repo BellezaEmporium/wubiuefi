@@ -37,7 +37,10 @@ autoinstall:
       primary:
         - country-mirror
         - uri: "http://archive.ubuntu.com/ubuntu"
-          arches: [i386, amd64]
+          arches: [amd64]
 
   error-commands:
     - tar -czf /installer-logs.tar.gz /var/log/installer/
+
+  early-commands:
+  - /cdrom/ubuntu/install/custom-installation/hooks/early-command.sh /ubuntu/install/custom-installation

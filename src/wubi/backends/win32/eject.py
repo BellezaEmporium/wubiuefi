@@ -19,7 +19,7 @@
 #
 
 import ctypes
-from winui.defs import FILE_SHARE_READ, FILE_SHARE_WRITE, GENERIC_READ, OPEN_EXISTING
+from win32file import FILE_SHARE_READ, FILE_SHARE_WRITE, GENERIC_READ, OPEN_EXISTING
 IOCTL_STORAGE_EJECT_MEDIA = 0x2D4808
 
 def eject_cd(cd_path):

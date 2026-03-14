@@ -22,8 +22,6 @@ import winreg
 import logging
 log = logging.getLogger("registry")
 
-from winui.defs import KEY_SET_VALUE
-
 KEY_WOW64_64KEY = 0x0100
 
 def get_value(key, subkey, attr):

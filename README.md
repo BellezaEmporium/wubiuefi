@@ -1,11 +1,10 @@
 # WubiUEFI
 
-
 ## Introduction
 
 Wubi is the Windows Ubuntu Installer. Wubi installs Ubuntu inside a file within a windows partition, and thus it does not require CD burning or dedicated partitions, yet the installation is a dual boot setup identical to a normal installation.
 
-For more information see: https://github.com/hakuna-m/wubiuefi/wiki
+For more information see: <https://github.com/hakuna-m/wubiuefi/wiki>
 
 ## Disclaimer
 
@@ -16,7 +15,6 @@ It might have some quacks and flaws (might not look good as well).
 I STRONGLY advise into disabling Secure Boot BEFORE launching yourself into this for now, as I haven't done the necessary for signing stuff (yet). (Might also get over App Control block for Win10+).
 
 ## Compiling
-
 
 | Make Command         | Description                                                                                                                                                               |
 |----------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -29,7 +27,6 @@ I STRONGLY advise into disabling Secure Boot BEFORE launching yourself into this
 | `make winboot2`      | Creates the bootloader files (new version)                                                                                                                                |
 | `make clean`         | Removes built files                                                                                                                                                       |
 | `make distclean`     | Removes built files and environment                                                                                                                                       |
-
 
 ## Code overview
 

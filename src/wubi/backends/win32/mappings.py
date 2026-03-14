@@ -484,17 +484,13 @@ n2fulllanguage = {
 }
 
 distro2installer = {
-    "ubuntu":                   "subiquity",
-    "ubuntu-server":            "subiquity",
-    "ubuntu-server-minimal":    "subiquity",
-    "ubuntu-desktop-minimal":   "subiquity",
-    "kubuntu":                  "calamares",
-    "xubuntu":                  "calamares",
-    "lubuntu":                  "calamares",
-    "ubuntu-mate":              "calamares",
-    "ubuntu-budgie":            "calamares",
-    "ubuntu-studio":            "calamares",
-    "ubuntu-unity":             "calamares",
-    "edubuntu":                 "calamares",
+    "ubuntu-desktop":           "subiquity",
+    "kubuntu-desktop":          "calamares",
+    "xubuntu-desktop":          "calamares",
+    "lubuntu-desktop":          "calamares",
+    "ubuntukylin-desktop":      "calamares",
+    "ubuntu-mate-desktop":      "calamares",
+    "budgie-desktop":           "calamares",
+    "ubuntustudio-desktop":     "calamares",
 }
 

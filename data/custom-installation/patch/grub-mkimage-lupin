@@ -23,7 +23,7 @@
 # loader boots straight into Windows if Windows was hibernated.
 find_wubildr () {
     local partitions=
-    for disk in $(grub-mkdevicemap -m - | cut -f2); do
+    for disk in $(grub-probe --target=disk / 2>/dev/null); do
         disk="$(readlink -f "$disk")" || continue
         sysdisk="/sys$(udevadm info -q path -n "$disk" 2>/dev/null)" || continue
         for syspartition in "$sysdisk"/*[0-9]; do
@@ -127,16 +127,16 @@ if search -s -f -n $loop_file; then
                 set show_panic_message=false
             fi
         elif [ -e /grub/grub.cfg ]; then
-                set prefix=(loop0)/grub
-                if configfile /grub/grub.cfg; then
+            set prefix=(loop0)/grub
+            if configfile /grub/grub.cfg; then
+                set show_panic_message=false
+            fi
+        else
+            if search -s -f -n /ubuntu/install/wubildr-disk.cfg; then
+                if configfile /ubuntu/install/wubildr-disk.cfg; then
                     set show_panic_message=false
                 fi
-	else
-		if search -s -f -n /ubuntu/install/wubildr-disk.cfg; then
-			if configfile /ubuntu/install/wubildr-disk.cfg; then
-				set show_panic_message=false
-			fi
-		fi
+            fi
         fi
     fi
 fi
@@ -151,7 +151,7 @@ EOF
 
 # Watch the modules order!
 modules=" \
-    biosdisk part_msdos part_gpt fat ntfs ext2 ntfscomp iso9660 loopback \
+    disk part_msdos part_gpt fat ntfs ext2 ntfscomp iso9660 loopback \
     search linux boot echo test gzio normal memdisk tar probe configfile"
 
 # Ensure errors pass through the pipeline.

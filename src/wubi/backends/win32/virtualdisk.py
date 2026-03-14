@@ -24,9 +24,11 @@ Allocates disk space for the virtual disk
 
 import ctypes
 from ctypes import c_long, byref
-from winui import defs
+import win32file
+import win32security
 import sys
 import logging
+from winui import defs
 log = logging.getLogger('Virtualdisk')
 
 def create_virtual_disk(path, size_mb):
@@ -44,25 +46,30 @@ def create_virtual_disk(path, size_mb):
     grant_privileges()
 
     # Create file
-    file_handle = defs.CreateFileW(
+    file_handle = win32file.CreateFileW(
         str(path),
-        defs.GENERIC_READ | defs.GENERIC_WRITE,
+        win32file.GENERIC_READ | win32file.GENERIC_WRITE,
         0,
-        defs.NULL,
-        defs.CREATE_ALWAYS,
-        defs.FILE_ATTRIBUTE_NORMAL,
-        defs.NULL)
-    if file_handle == defs.INVALID_HANDLE_VALUE:
+        win32security.SECURITY_ATTRIBUTES(),
+        win32file.CREATE_ALWAYS,
+        win32file.FILE_ATTRIBUTE_NORMAL,
+        None)
+    if file_handle == win32file.INVALID_HANDLE_VALUE:
         log.exception("Failed to create file %s" % path)
 
-    # Set pointer to end of file */
+    # Set pointer to end of file
     file_pos = defs.LARGE_INTEGER()
-    file_pos.QuadPart = size_mb*1024*1024
-    if not defs.SetFilePointerEx(file_handle, file_pos, 0, defs.FILE_BEGIN):
+    file_pos.QuadPart = size_mb * 1024 * 1024
+    result = defs.SetFilePointerEx(
+                   file_handle,
+                   file_pos,
+                   defs.NULL,
+                   defs.FILE_BEGIN)
+    if not result:
         log.exception("Failed to set file pointer to end of file")
 
     # Set end of file
-    if not defs.SetEndOfFile(file_handle):
+    if not win32file.SetEndOfFile(file_handle):
         log.exception("Failed to extend file. Not enough free space?")
 
     # Set valid data (if possible), ignore errors

@@ -25,6 +25,7 @@
 # so let's add ./lib to the path
 import sys
 import os
+import platform
 
 def get_base_path():
     if getattr(sys, 'frozen', False):
@@ -38,6 +39,12 @@ sys.path.insert(0, lib_dir)
 
 
 from wubi.application import Wubi
+
+if platform.architecture()[0] != '64bit':
+    print("We're sorry, but Wubi requires a 64-bit version of Windows to run, " \
+    "due to Ubuntu not releasing 32-bit versions of their ISOs since 18.04. " \
+    "Please use an earlier version of Wubi if you have a 32-bit Windows.")
+    sys.exit(1)
 
 try:
     from version import application_name, version, revision

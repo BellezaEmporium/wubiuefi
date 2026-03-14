@@ -21,10 +21,11 @@
 Python wrappers around win32 widgets and window classes
 '''
 
-from . import defs
 import os
 import ctypes
 from ctypes import wintypes
+import win32con
+from . import defs
 
 __all__ = ["Window", "Frontend"]
 
@@ -64,7 +65,7 @@ class BasicWindow(object):
     Wraps
     '''
     _window_class_name_ = None
-    _window_class_style_ = defs.CS_HREDRAW | defs.CS_VREDRAW
+    _window_class_style_ = win32con.CS_HREDRAW | win32con.CS_VREDRAW
     _window_style_ = 0
     _window_ex_style_ = 0
     _window_class_registered_ = False
@@ -81,7 +82,10 @@ class BasicWindow(object):
         if not self.__class__._window_class_registered_:
             self.__class__._window_class_name_ = self.__class__.__name__
             if icon:
-                self._icon = ctypes.windll.user32.LoadImageW(...)
+                self._icon = ctypes.windll.user32.LoadImageW(
+                    win32con.NULL, icon, win32con.IMAGE_ICON,
+                    0, 0, win32con.LR_LOADFROMFILE
+                )
             self._register_window()
             self.__class__._window_class_registered_ = True
         self._create_window(x, y, width, height, text)
@@ -96,24 +100,23 @@ class BasicWindow(object):
                 icon=self._icon)
         self._window_class_._atom_ = defs.RegisterClassExW(ctypes.byref(self._window_class_))
         if not self._window_class_._atom_:
-            import ctypes
             err = ctypes.GetLastError()
             if err != 1410:
                 raise ctypes.WinError(err)
 
     def _create_window(self, x=None, y=None, width=None, height=None, text=None):
-        hmenu = defs.NULL
-        lpparam = defs.NULL
-        hwnd = self.parent and self.parent._hwnd or defs.NULL
+        hmenu = win32con.NULL
+        lpparam = win32con.NULL
+        hwnd = self.parent and self.parent._hwnd or win32con.NULL
         frontend_hinstance = self.frontend._hinstance
         if x is None:
-            x = defs.CW_USEDEFAULT
+            x = win32con.CW_USEDEFAULT
         if y is None:
-            y = defs.CW_USEDEFAULT
+            y = win32con.CW_USEDEFAULT
         if width is None:
-            width = defs.CW_USEDEFAULT
+            width = win32con.CW_USEDEFAULT
         if height is None:
-            height = defs.CW_USEDEFAULT
+            height = win32con.CW_USEDEFAULT
         if not text:
             text = ""
         self._hwnd = defs.CreateWindowEx(
@@ -139,7 +142,7 @@ class BasicWindow(object):
                     if subkey is defs.SELF_HWND:
                         handled_event[i] = self._hwnd
                     elif subkey is defs.PARENT_HWND:
-                        handled_event[i] = self.parent._hwnd if self.parent is not None else defs.NULL
+                        handled_event[i] = self.parent._hwnd if self.parent is not None else win32con.NULL
                     elif subkey is defs.APPLICATION_HINSTANCE:
                         handled_event[i] = self.frontend._hinstance
                 self._add_event_handler(key , handled_event)
@@ -166,7 +169,7 @@ class Window(BasicWindow):
         self._background_brush = None
         self._default_background_brush = None
         self._text_color = None
-        self._null_brush = ctypes.windll.gdi32.GetStockObject(defs.NULL_BRUSH)
+        self._null_brush = ctypes.windll.gdi32.GetStockObject(win32con.NULL_BRUSH)
         self._gdi_disposables.append(self._null_brush)
         BasicWindow.__init__(self, parent, x, y, width, height, text, frontend, icon)
         self.set_font()
@@ -183,18 +186,18 @@ class Window(BasicWindow):
         return rect.left, rect.top, rect.right, rect.bottom
 
     def move(self, x, y):
-        if not ctypes.windll.user32.SetWindowPos(self._hwnd, defs.NULL, x, y, 0, 0,  defs.SWP_NOSIZE):
+        if not ctypes.windll.user32.SetWindowPos(self._hwnd, win32con.NULL, x, y, 0, 0,  win32con.SWP_NOSIZE):
         #~ if not windll.user32.MoveWindow(self._hwnd, x, y, -1, -1, self._repaint_on_move_): #repaint
             raise ctypes.WinError()
 
     def resize(self, width, height):
-        if not ctypes.windll.user32.SetWindowPos(self._hwnd, defs.NULL, 0, 0, width, height, defs.SWP_NOMOVE):
+        if not ctypes.windll.user32.SetWindowPos(self._hwnd, win32con.NULL, 0, 0, width, height, win32con.SWP_NOMOVE):
             raise ctypes.WinError()
 
     def show(self):
         #http://msdn.microsoft.com/en-us/library/ms633548.aspx
         self.on_show()
-        if not ctypes.windll.user32.ShowWindow(self._hwnd, defs.SW_SHOWNORMAL):
+        if not ctypes.windll.user32.ShowWindow(self._hwnd, win32con.SW_SHOWNORMAL):
             #raise WinError()
             pass
         self.update()
@@ -212,7 +215,7 @@ class Window(BasicWindow):
         self.update()
 
     def hide(self):
-        if not ctypes.windll.user32.ShowWindow(self._hwnd, defs.SW_HIDE):
+        if not ctypes.windll.user32.ShowWindow(self._hwnd, win32con.SW_HIDE):
             #~ raise WinError()
             pass
 
@@ -221,8 +224,8 @@ class Window(BasicWindow):
 
     def update(self, full=False):
         if full:
-            ctypes.windll.user32.ShowWindow(self._hwnd, defs.SW_HIDE)
-            ctypes.windll.user32.ShowWindow(self._hwnd, defs.SW_SHOW)
+            ctypes.windll.user32.ShowWindow(self._hwnd, win32con.SW_HIDE)
+            ctypes.windll.user32.ShowWindow(self._hwnd, win32con.SW_SHOW)
         if not ctypes.windll.user32.UpdateWindow(self._hwnd):
             raise ctypes.WinError()
 
@@ -242,7 +245,7 @@ class Window(BasicWindow):
             self.update(full=True)
 
     def set_font(self, family='Tahoma', size=13, bold=False):
-        weight = bold and defs.FW_BOLD or defs.FW_NORMAL
+        weight = bold and win32con.FW_BOLD or win32con.FW_NORMAL
         font = ctypes.windll.gdi32.CreateFontW(
             size, # height of font
             0, # average character width
@@ -260,17 +263,17 @@ class Window(BasicWindow):
             str(family) #TEXT("Verdana") # typeface name
             )
         self._gdi_disposables.append(font)
-        self._send_message(defs.WM_SETFONT, font, True)
+        self._send_message(win32con.WM_SETFONT, font, True)
 
     def set_background_color(self, red255=None, green255=None, blue255=None):
         if (red255, green255, blue255) == (None, None, None):
             self._background_color = None
             if self._default_background_brush:
-                ctypes.windll.user32.SetClassLongW(self._hwnd, defs.GCL_HBRBACKGROUND, self._default_background_brush)
+                ctypes.windll.user32.SetClassLongW(self._hwnd, win32con.GCL_HBRBACKGROUND, self._default_background_brush)
         else:
             self._background_color = defs.RGB(red255, blue255, green255)
             self._background_brush = ctypes.windll.gdi32.CreateSolidBrush(self._background_color)
-            self._default_background_brush = ctypes.windll.user32.SetClassLongW(self._hwnd, defs.GCL_HBRBACKGROUND, self._background_brush)
+            self._default_background_brush = ctypes.windll.user32.SetClassLongW(self._hwnd, win32con.GCL_HBRBACKGROUND, self._background_brush)
             self._gdi_disposables.append(self._background_color)
             self._gdi_disposables.append(self._background_brush)
             self._gdi_disposables.append(self._default_background_brush)
@@ -288,18 +291,16 @@ class Window(BasicWindow):
 
     def _on_command(self, event):
         self.on_command(event)
-    _on_command = event_handler(message=defs.WM_COMMAND, lparam=defs.SELF_HWND)(_on_command)
+    _on_command = event_handler(message=win32con.WM_COMMAND, lparam=defs.SELF_HWND)(_on_command)
 
     def on_command(self, event):
         pass
 
     def stop_redraw(self):
-        self._send_message(defs.WM_SETREDRAW, False, 0)
-        #~ LockWindowUpdate(self._hwnd)
-        #~ LockWindowUpdate(NULL)
+        self._send_message(win32con.WM_SETREDRAW, False, 0)
 
     def start_redraw(self):
-        self._send_message(defs.WM_SETREDRAW, True, 0)
+        self._send_message(win32con.WM_SETREDRAW, True, 0)
 
     def _send_message(self, message, wparam=0, lparam=0):
         return ctypes.windll.user32.SendMessageW(self._hwnd, message, wparam, lparam)
@@ -311,20 +312,20 @@ class Window(BasicWindow):
             except:
                 pass
         self.on_destroy()
-    _on_destroy = event_handler(message=defs.WM_DESTROY, hwnd=defs.SELF_HWND)(_on_destroy)
+    _on_destroy = event_handler(message=win32con.WM_DESTROY, hwnd=defs.SELF_HWND)(_on_destroy)
 
     def _on_ctlcolorstatic(self, event):
         hdc = event[2]
         if self._text_color:
             ctypes.windll.gdi32.SetTextColor(hdc, self._text_color)
         if self._is_transparent_:
-            ctypes.windll.gdi32.SetBkMode(hdc, defs.TRANSPARENT)
+            ctypes.windll.gdi32.SetBkMode(hdc, win32con.TRANSPARENT)
             brush = self._null_brush
         else:
             brush = True
         return brush
-    event_handler(message=defs.WM_CTLCOLORBTN, lparam=defs.SELF_HWND)(_on_ctlcolorstatic)
-    event_handler(message=defs.WM_CTLCOLORSTATIC, lparam=defs.SELF_HWND)(_on_ctlcolorstatic)
+    _on_ctlcolorbtn = event_handler(message=win32con.WM_CTLCOLORBTN, lparam=defs.SELF_HWND)(_on_ctlcolorstatic)
+    _on_ctlcolorstatic = event_handler(message=win32con.WM_CTLCOLORSTATIC, lparam=defs.SELF_HWND)(_on_ctlcolorstatic)
 
     def on_show(self):
         pass
@@ -342,7 +343,7 @@ class Frontend(object):
 
     def __init__(self, main_window_class=None, **kargs):
         self._hwnd = None
-        self._hinstance = ctypes.windll.kernel32.GetModuleHandleW(ctypes.c_int(defs.NULL))
+        self._hinstance = ctypes.windll.kernel32.GetModuleHandleW(ctypes.c_int(win32con.NULL))
         kargs["frontend"] = self
         if not main_window_class:
             main_window_class = self._main_window_class_
@@ -354,8 +355,8 @@ class Frontend(object):
 
     def set_icon(self, icon_path):
         if icon_path and os.path.isfile(icon_path):
-            self.main_window._icon = ctypes.windll.user32.LoadImageW(defs.NULL, icon_path, defs.IMAGE_ICON, 0, 0, defs.LR_LOADFROMFILE);
-            ctypes.windll.user32.SendMessageW(self.main_window._hwnd, defs.WM_SETICON, defs.ICON_SMALL, self.main_window._icon)
+            self.main_window._icon = ctypes.windll.user32.LoadImageW(win32con.NULL, icon_path, win32con.IMAGE_ICON, 0, 0, win32con.LR_LOADFROMFILE);
+            ctypes.windll.user32.SendMessageW(self.main_window._hwnd, win32con.WM_SETICON, win32con.ICON_SMALL, self.main_window._icon)
 
     def get_title(self):
         return self.main_window.get_text()
@@ -368,9 +369,9 @@ class Frontend(object):
         pMsg = ctypes.pointer(msg)
         self._keep_running = True
         self.on_run()
-        while self._keep_running and ctypes.windll.user32.GetMessageW(pMsg, defs.NULL, 0, 0) > 0:
-            if self.main_window._hwnd == defs.NULL \
-            or pMsg.contents.message in (defs.WM_COMMAND, defs.WM_PAINT, defs.WM_CTLCOLORSTATIC, defs.WM_DESTROY, defs.WM_QUIT) \
+        while self._keep_running and ctypes.windll.user32.GetMessageW(pMsg, win32con.NULL, 0, 0) > 0:
+            if self.main_window._hwnd == win32con.NULL \
+            or pMsg.contents.message in (win32con.WM_COMMAND, win32con.WM_PAINT, win32con.WM_CTLCOLORSTATIC, win32con.WM_DESTROY, win32con.WM_QUIT) \
             or not ctypes.windll.user32.IsDialogMessage(self.main_window._hwnd, pMsg):
                 ctypes.windll.user32.TranslateMessage(pMsg)
                 ctypes.windll.user32.DispatchMessageW(pMsg)
@@ -381,7 +382,7 @@ class Frontend(object):
         '''
         self._keep_running = False
         #Post a message to unblock GetMessageW
-        ctypes.windll.user32.PostMessageW(self.main_window._hwnd, defs.WM_NULL, 0, 0)
+        ctypes.windll.user32.PostMessageW(self.main_window._hwnd, win32con.WM_NULL, 0, 0)
 
     def on_init(self):
         pass
@@ -409,24 +410,24 @@ class Frontend(object):
     def show_error_message(self, message, title=None):
         if not title:
             title = self.get_title()
-        ctypes.windll.user32.MessageBoxW(self.main_window._hwnd, str(message), str(title), defs.MB_OK|defs.MB_ICONERROR)
+        ctypes.windll.user32.MessageBoxW(self.main_window._hwnd, str(message), str(title), win32con.MB_OK|win32con.MB_ICONERROR)
 
     def show_info_message(self, message, title=None):
         if not title:
             title = self.get_title()
-        ctypes.windll.user32.MessageBoxW(self.main_window._hwnd, str(message), str(title), defs.MB_OK|defs.MB_ICONINFORMATION)
+        ctypes.windll.user32.MessageBoxW(self.main_window._hwnd, str(message), str(title), win32con.MB_OK|win32con.MB_ICONINFORMATION)
 
     def ask_confirmation(self, message, title=None):
         if not title:
             title = self.get_title()
-        result = ctypes.windll.user32.MessageBoxW(self.main_window._hwnd, str(message), str(title), defs.MB_YESNO|defs.MB_ICONQUESTION)
-        return result == defs.IDYES
+        result = ctypes.windll.user32.MessageBoxW(self.main_window._hwnd, str(message), str(title), win32con.MB_YESNO|win32con.MB_ICONQUESTION)
+        return result == win32con.IDYES
 
     def ask_to_retry(self, message, title=None):
         if not title:
             title = self.get_title()
-        result = ctypes.windll.user32.MessageBoxW(self.main_window._hwnd, str(message), str(title), defs.MB_RETRYCANCEL)
-        return result == defs.IDRETRY
+        result = ctypes.windll.user32.MessageBoxW(self.main_window._hwnd, str(message), str(title), win32con.MB_RETRYCANCEL)
+        return result == win32con.IDRETRY
 
 class MainWindow(Window):
     '''
@@ -435,13 +436,10 @@ class MainWindow(Window):
     '''
 
     _window_class_name_ = None
-    _window_style_ = defs.WS_OVERLAPPEDWINDOW
-    _window_ex_style_ = defs.WS_EX_CONTROLPARENT
+    _window_style_ = win32con.WS_OVERLAPPEDWINDOW
+    _window_ex_style_ = win32con.WS_EX_CONTROLPARENT
 
     def on_destroy(self):
-        self.frontend._quit()
-
-    def __del__(self):
         self.frontend._quit()
 
 class MainDialogWindow(MainWindow):
@@ -449,38 +447,38 @@ class MainDialogWindow(MainWindow):
     Like MainWindow
     But cannot be resized, looks like a dialog
     '''
-    _window_style_ =  defs.WS_BORDER |  defs.WS_SYSMENU | defs.WS_CAPTION
+    _window_style_ =  win32con.WS_BORDER |  win32con.WS_SYSMENU | win32con.WS_CAPTION
 
 class Widget(Window):
     _window_class_name_ = "Must Override This"
-    _window_style_ = defs.WS_CHILD | defs.WS_VISIBLE | defs.WS_TABSTOP
+    _window_style_ = win32con.WS_CHILD | win32con.WS_VISIBLE | win32con.WS_TABSTOP
     _window_ex_style_ = 0
 
 class StaticWidget(Widget):
     _window_class_name_ = "STATIC"
-    _window_style_ = defs.WS_CHILD | defs.WS_VISIBLE
-    _window_ex_style_ = defs.WS_EX_TRANSPARENT
+    _window_style_ = win32con.WS_CHILD | win32con.WS_VISIBLE
+    _window_ex_style_ = win32con.WS_EX_TRANSPARENT
     _is_transparent_ = True
 
 class EtchedRectangle(Widget):
     _window_class_name_ = "STATIC"
-    _window_style_ = defs.WS_CHILD | defs.WS_VISIBLE | defs.SS_ETCHEDFRAME
+    _window_style_ = win32con.WS_CHILD | win32con.WS_VISIBLE | win32con.SS_ETCHEDFRAME
 
 class Panel(Window):
     _window_class_name_ = None
-    _window_style_ = defs.WS_CHILD | defs.WS_VISIBLE
-    _window_ex_style_ = defs.WS_EX_CONTROLPARENT
+    _window_style_ = win32con.WS_CHILD | win32con.WS_VISIBLE
+    _window_ex_style_ = win32con.WS_EX_CONTROLPARENT
     #_window_style_ = StaticWidget._window_style_|WS_BORDER
 
 class Edit(Widget):
     _window_class_name_ = "EDIT"
-    _window_style_ = Widget._window_style_ | defs.WS_TABSTOP
-    _window_ex_style_ = defs.WS_EX_CLIENTEDGE
+    _window_style_ = Widget._window_style_ | win32con.WS_TABSTOP
+    _window_ex_style_ = win32con.WS_EX_CLIENTEDGE
 
 class PasswordEdit(Widget):
     _window_class_name_ = "EDIT"
-    _window_style_ = Widget._window_style_ | defs.ES_PASSWORD | defs.WS_TABSTOP
-    _window_ex_style_ = defs.WS_EX_CLIENTEDGE
+    _window_style_ = Widget._window_style_ | win32con.ES_PASSWORD | win32con.WS_TABSTOP
+    _window_ex_style_ = win32con.WS_EX_CLIENTEDGE
 
 class Tab(Widget):
     #define WC_TABCONTROLW          L"SysTabControl32"   ???
@@ -497,43 +495,44 @@ class Tab(Widget):
         self._send_message(defs.TCM_INSERTITEM, position, ctypes.addressof(item))
 
 class Tooltip(Widget):
-    _window_class_name_ = "SysTabControl32"
+    _window_class_name_ = "tooltips_class32"
+    _window_style_ = win32con.WS_POPUP | defs.TTS_ALWAYSTIP
 
 
 class ListBox(Widget):
     _window_class_name_ = "ListBox"
-    _window_style_ = Widget._window_style_  | defs.WS_TABSTOP
+    _window_style_ = Widget._window_style_  | win32con.WS_TABSTOP
 
     def add_item(self, text):
         text_buf = ctypes.c_wchar_p(str(text))
-        self._send_message(defs.LB_ADDSTRING, 0, ctypes.cast(text_buf, ctypes.c_void_p).value or 0)
+        self._send_message(win32con.LB_ADDSTRING, 0, ctypes.cast(text_buf, ctypes.c_void_p).value or 0)
 
 class ComboBox(Widget):
     _window_class_name_ = "COMBOBOX" #"ComboBoxEx32"
-    _window_style_ = Widget._window_style_ | defs.CBS_DROPDOWNLIST | defs.WS_VSCROLL | defs.WS_TABSTOP
+    _window_style_ = Widget._window_style_ | win32con.CBS_DROPDOWNLIST | win32con.WS_VSCROLL | win32con.WS_TABSTOP
 
     def on_command(self, event):
-        if event[2] == 589824: #TBD use a constant name
+        if (event[2] >> 16) == win32con.CBN_SELCHANGE:
             self.on_change()
 
     def set_value(self, value):
-        self._send_message(defs.CB_SELECTSTRING, -1, ctypes.cast(ctypes.c_wchar_p(str(value)), ctypes.c_void_p).value or 0)
+        self._send_message(win32con.CB_SELECTSTRING, -1, ctypes.cast(ctypes.c_wchar_p(str(value)), ctypes.c_void_p).value or 0)
 
     def add_item(self, text):
-        self._send_message(defs.CB_ADDSTRING, 0, ctypes.cast(ctypes.c_wchar_p(str(text)), ctypes.c_void_p).value or 0)
+        self._send_message(win32con.CB_ADDSTRING, 0, ctypes.cast(ctypes.c_wchar_p(str(text)), ctypes.c_void_p).value or 0)
 
     def clear(self):
-        self._send_message(defs.CB_RESETCONTENT, 0, 0)
+        self._send_message(win32con.CB_RESETCONTENT, 0, 0)
 
     def on_change(self):
         pass
 
 class SortedComboBox(ComboBox):
-    _window_style_ = ComboBox._window_style_ | defs.CBS_SORT
+    _window_style_ = ComboBox._window_style_ | win32con.CBS_SORT
 
 class Button(Widget):
     _window_class_name_ = "BUTTON"
-    _window_style_ = Widget._window_style_ | defs.BS_PUSHBUTTON | defs.WS_TABSTOP
+    _window_style_ = Widget._window_style_ | win32con.BS_PUSHBUTTON | win32con.WS_TABSTOP
     #~ _is_transparent_ = True
     #~ _window_ex_style_ = WS_EX_TRANSPARENT
 
@@ -542,63 +541,63 @@ class Button(Widget):
             self.on_click()
 
     def is_checked(self):
-        value = self._send_message(defs.BM_GETCHECK, 0, 0)
-        return value == defs.BST_CHECKED
+        value = self._send_message(win32con.BM_GETCHECK, 0, 0)
+        return value == win32con.BST_CHECKED
 
     def set_check(self, value):
         if value:
-            value = defs.BST_CHECKED
+            value = win32con.BST_CHECKED
         else:
-            value = defs.BST_UNCHECKED
-        self._send_message(defs.BM_SETCHECK, value, 0)
+            value = win32con.BST_UNCHECKED
+        self._send_message(win32con.BM_SETCHECK, value, 0)
 
     def on_click(self):
         pass
 
 class FlatButton(Button):
-    _window_style_ = Widget._window_style_ | defs.BS_FLAT | defs.WS_TABSTOP
+    _window_style_ = Widget._window_style_ | win32con.BS_FLAT | win32con.WS_TABSTOP
 
 class DefaultButton(Button):
-    _window_style_ = Widget._window_style_ | defs.BS_DEFPUSHBUTTON  | defs.WS_TABSTOP
+    _window_style_ = Widget._window_style_ | win32con.BS_DEFPUSHBUTTON  | win32con.WS_TABSTOP
 
 class RadioButton(Button):
     _window_class_name_ = "BUTTON"
-    _window_style_ = Widget._window_style_ | defs.BS_AUTORADIOBUTTON | defs.WS_TABSTOP
+    _window_style_ = Widget._window_style_ | win32con.BS_AUTORADIOBUTTON | win32con.WS_TABSTOP
     _is_transparent_ = True
 
 class GroupBox(Button):
     _window_class_name_ = "BUTTON"
-    _window_style_ = Widget._window_style_ | defs.BS_GROUPBOX  #| WS_TABSTOP
+    _window_style_ = Widget._window_style_ | win32con.BS_GROUPBOX  #| WS_TABSTOP
     _is_transparent_ = True
-    _window_ex_style_ = defs.WS_EX_CONTROLPARENT
+    _window_ex_style_ = win32con.WS_EX_CONTROLPARENT
 
 class CheckButton(Button):
     _window_class_name_ = "BUTTON"
-    _window_style_ = Widget._window_style_ | defs.BS_AUTOCHECKBOX  | defs.WS_TABSTOP
+    _window_style_ = Widget._window_style_ | win32con.BS_AUTOCHECKBOX  | win32con.WS_TABSTOP
     _is_transparent_ = True
 
 class Label(StaticWidget):
     _window_class_name_ = "Static"
-    _window_style_ = StaticWidget._window_style_ | defs.SS_NOPREFIX
+    _window_style_ = StaticWidget._window_style_ | win32con.SS_NOPREFIX
 
 class Bitmap(StaticWidget):
     _window_class_name_ = "Static"
-    _window_style_ = StaticWidget._window_style_ | defs.SS_BITMAP
-    _window_ex_style_ = defs.WS_EX_TRANSPARENT
+    _window_style_ = StaticWidget._window_style_ | win32con.SS_BITMAP
+    _window_ex_style_ = win32con.WS_EX_TRANSPARENT
 
     def set_image(self, path, width=0, height=0):
-        himage = ctypes.windll.user32.LoadImageW(defs.NULL, path, defs.IMAGE_BITMAP, width, height, defs.LR_LOADFROMFILE);
+        himage = ctypes.windll.user32.LoadImageW(win32con.NULL, path, win32con.IMAGE_BITMAP, width, height, win32con.LR_LOADFROMFILE);
         self._gdi_disposables.append(himage)
-        self._send_message(defs.STM_SETIMAGE, defs.IMAGE_BITMAP, himage)
+        self._send_message(win32con.STM_SETIMAGE, win32con.IMAGE_BITMAP, himage)
 
 class Icon(StaticWidget):
     _window_class_name_ = "Static"
-    _window_style_ = StaticWidget._window_style_|defs.SS_ICON
+    _window_style_ = StaticWidget._window_style_|win32con.SS_ICON
 
     def set_image(self, path, width=0, height=0):
-        himage = ctypes.windll.user32.LoadImageW(defs.NULL, path, defs.IMAGE_ICON, width, height, defs.LR_LOADFROMFILE);
+        himage = ctypes.windll.user32.LoadImageW(win32con.NULL, path, win32con.IMAGE_ICON, width, height, win32con.LR_LOADFROMFILE);
         self._gdi_disposables.append(himage)
-        self._send_message(defs.STM_SETIMAGE, defs.IMAGE_ICON, himage)
+        self._send_message(win32con.STM_SETIMAGE, win32con.IMAGE_ICON, himage)
 
 class ProgressBar(Widget):
     _window_class_name_ = "msctls_progress32"
@@ -631,5 +630,5 @@ class Link(Widget):
 
 class Page(Window):
     _window_class_name_ = None
-    _window_style_ = defs.WS_CHILD
-    _window_ex_style_ = defs.WS_EX_CONTROLPARENT
+    _window_style_ = win32con.WS_CHILD
+    _window_ex_style_ = win32con.WS_EX_CONTROLPARENT

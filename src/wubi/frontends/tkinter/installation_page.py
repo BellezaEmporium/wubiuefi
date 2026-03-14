@@ -27,7 +27,6 @@ class InstallationPage(Page):
         form = tk.Frame(self, bg="#ffffff")
         form.pack(fill="both", expand=True, padx=24, pady=12)
 
-        # --- Colonne gauche ---
         tk.Label(form, text=_("Installation drive:"), bg="#ffffff", anchor="w").grid(row=0, column=0, sticky="w")
         self._drive_var = tk.StringVar()
         self.target_drive_list = ttk.Combobox(form, textvariable=self._drive_var, state="readonly", width=22)
@@ -46,7 +45,6 @@ class InstallationPage(Page):
         self.distro_list.grid(row=5, column=0, sticky="w", pady=(0, 10))
         self.distro_list.bind("<<ComboboxSelected>>", lambda e: self.on_distro_change())
 
-        # --- Colonne droite ---
         tk.Label(form, text=_("Language:"), bg="#ffffff", anchor="w").grid(row=0, column=1, sticky="w", padx=(20, 0))
         self._lang_var = tk.StringVar()
         self.language_list = ttk.Combobox(form, textvariable=self._lang_var, state="readonly", width=22)
@@ -65,7 +63,6 @@ class InstallationPage(Page):
         tk.Entry(form, textvariable=self._pw1_var, show="*", width=24).grid(row=5, column=1, sticky="w", padx=(20, 0))
         tk.Entry(form, textvariable=self._pw2_var, show="*", width=24).grid(row=6, column=1, sticky="w", padx=(20, 0), pady=(0, 10))
 
-        # --- Erreur + boutons ---
         self._error_var = tk.StringVar()
         tk.Label(self, textvariable=self._error_var, fg="red", bg="#ffffff").pack()
 
@@ -77,7 +74,6 @@ class InstallationPage(Page):
         self.populate_language_list()
         self.populate_distro_list()
 
-    # --- Populate helpers (logique identique à l'original) ---
 
     def populate_language_list(self):
         languages = sorted(language2lang_country.keys())
@@ -135,7 +131,6 @@ class InstallationPage(Page):
             self._size_var.set(mid)
             self.on_size_change()
 
-    # --- Événements ---
 
     def _get_selected_drive(self):
         val = self._drive_var.get()

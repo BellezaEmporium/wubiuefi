@@ -110,8 +110,12 @@ if [ ! -f "$grubdir/grubenv" ]; then
     grub-editenv "$grubdir/grubenv" create
 fi
 
-if [ -d "$source_grubdir"/i386-pc ]; then 
+if [ -d "$source_grubdir/i386-pc" ]; then
     /usr/local/sbin/grub-mkimage-lupin
+elif [ -d "$source_grubdir/x86_64-efi" ] || [ -d "$source_grubdir/i386-efi" ]; then
+    # in EFI mode, wubildr is already an EFI executable, so we don't need to rebuild it.
+    # Just make sure it's in place.
+    echo "EFI platform detected, skipping wubildr rebuild." >&2
 fi
 
 # If vestiges of GRUB Legacy still exist, tell the Debian packaging that

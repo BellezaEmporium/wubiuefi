@@ -24,6 +24,7 @@ import ctypes
 import platform
 import re
 import textwrap
+import hashlib
 from .drive import Drive
 from .virtualdisk import create_virtual_disk
 from .eject import eject_cd
@@ -73,13 +74,13 @@ class WindowsBackend(Backend):
         Returns the correct Subiquity source ID based on the distro name.
         Ubuntu Desktop = ubuntu-desktop, Ubuntu Server = ubuntu-server, etc.
         """
-        distro = self.info.distro.name.lower()
+        distro_obj = getattr(self.info, 'distro', None)
+        distro_name = getattr(distro_obj, 'name', None) or getattr(self.info, 'distro_name', None) or 'ubuntu'
+        distro = str(distro_name).lower()
         
         source_map = {
             "ubuntu":           "ubuntu-desktop",
             "ubuntu-server":    "ubuntu-server",
-            "ubuntu-server-minimal": "ubuntu-server-minimal",
-            "ubuntu-desktop-minimal": "ubuntu-desktop-minimal",
         }
         
         source_id = source_map.get(distro, "ubuntu-desktop")
@@ -112,6 +113,8 @@ class WindowsBackend(Backend):
         self.info.installer_type = self.get_installer_type()
         self.info.previous_target_dir  = self.get_previous_target_dir()
         self.info.previous_distro_name = self.get_previous_distro_name()
+        self.info.hostname    = os.environ.get('COMPUTERNAME', 'wubi-host').lower()
+        self.info.username    = self.info.host_username
 
     def check_secure_boot(self):
         """Checks if the computer has Secure Boot enabled. 
@@ -223,7 +226,7 @@ class WindowsBackend(Backend):
             primary:
                 - country-mirror
                 - uri: "http://archive.ubuntu.com/ubuntu"
-                arches: [i386, amd64]
+                arches: [amd64]
         error-commands:
             - tar -czf /installer-logs.tar.gz /var/log/installer/
         """).format(
@@ -234,7 +237,7 @@ class WindowsBackend(Backend):
             realname=self.info.user_full_name,
             hostname=self.info.hostname,
             username=self.info.host_username,
-            hashed_password=self.info.hashed_password,
+            hashed_password=hashlib.sha512(self.info.password.encode('utf-8')).hexdigest(),
             source_id=self.info.source_id,
         )
 
@@ -673,7 +676,9 @@ class WindowsBackend(Backend):
         os.unlink(src)
 
     def get_installer_type(self):
-        distro = self.info.distro.name.lower()
+        distro_obj = getattr(self.info, 'distro', None)
+        distro_name = getattr(distro_obj, 'name', None) or getattr(self.info, 'distro_name', None) or 'ubuntu'
+        distro = str(distro_name).lower()
         installer = mappings.distro2installer.get(distro, "calamares")
         log.debug("installer_type: %s" % installer)
         return installer

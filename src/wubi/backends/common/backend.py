@@ -118,6 +118,18 @@ class Backend(object):
         tasklist = ThreadedTaskList(description=("Uninstalling %s") % self.info.previous_distro_name, tasks=tasks)
         return tasklist
 
+    def get_cdboot_tasklist(self):
+        tasks = [
+            Task(self.select_target_dir, description=("Selecting the target directory")),
+            Task(self.create_dir_structure, description=("Creating the installation directories")),
+            Task(self.uncompress_target_dir, description=("Uncompressing files")),
+            Task(self.create_uninstaller, description=("Creating the uninstaller")),
+            Task(self.create_preseed_cdboot, description=("Creating a preseed file")),
+            Task(self.modify_bootloader, description=("Adding a new bootloader entry")),
+        ]
+        description = ("Configuring CD boot helper")
+        return ThreadedTaskList(description=description, tasks=tasks)
+
     def show_info(self):
         log.debug("Showing info")
         os.startfile(self.info.cd_distro.website)
@@ -585,7 +597,10 @@ class Backend(object):
 
     def create_preseed_cdboot(self):
         source = join_path(self.info.data_dir, 'preseed.cdboot')
-        target = join_path(self.info.custominstall, "preseed.cfg")
+        custom_install_dir = self.info.custominstall or self.info.install_dir
+        if not custom_install_dir:
+            raise Exception("Could not determine target directory for preseed.cdboot")
+        target = join_path(custom_install_dir, "preseed.cfg")
         copy_file(source, target)
 
     def create_preseed(self):

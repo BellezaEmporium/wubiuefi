@@ -11,6 +11,7 @@ hiddenimports = (
     + collect_submodules('aiotorrent')
     + collect_submodules('bitstring')
     + collect_submodules('bitarray')
+    + collect_submodules('pywin32')
     + [
         'bitstring.bitstore_bitarray',
         'bitstring.bitstore',
