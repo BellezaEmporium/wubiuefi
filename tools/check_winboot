@@ -53,3 +53,54 @@ test -e .key || {
     openssl x509 -in ".key/${USER}_wubi.crt" \
         -out ".key/${USER}_wubi.cer" -outform DER
 }
+
+WINBOOT_EFI="build/winboot/EFI"
+mkdir -p "$WINBOOT_EFI"
+
+SHIM_SRC=""
+for candidate in \
+    /usr/lib/shim/shimx64.efi.signed \
+    /usr/lib/shim/shim.efi.signed \
+    /usr/lib/shim-signed/shim/shimx64.efi.signed; do
+    if [ -e "$candidate" ]; then
+        SHIM_SRC="$candidate"
+        break
+    fi
+done
+
+if [ -z "$SHIM_SRC" ]; then
+    echo "Error: shimx64.efi.signed introuvable"
+    exit 1
+fi
+cp "$SHIM_SRC" "$WINBOOT_EFI/shimx64.efi"
+echo "Copied shimx64.efi"
+
+USER=$(whoami)
+KEY=".key/${USER}_wubi.key"
+CRT=".key/${USER}_wubi.crt"
+
+grub-mkimage -O x86_64-efi \
+    -p "/EFI/wubildr" \
+    -o "$WINBOOT_EFI/grubx64.efi.unsigned" \
+    part_gpt part_msdos fat ntfs ext2 loopback \
+    linux boot search search_fs_uuid configfile \
+    normal echo test sleep gfxterm font
+
+sbsign --key "$KEY" --cert "$CRT" \
+    --output "$WINBOOT_EFI/grubx64.efi" \
+    "$WINBOOT_EFI/grubx64.efi.unsigned"
+rm -f "$WINBOOT_EFI/grubx64.efi.unsigned"
+
+grub-mkimage -O i386-efi \
+    -p "/EFI/wubildr" \
+    -o "$WINBOOT_EFI/grubia32.efi.unsigned" \
+    part_gpt part_msdos fat ntfs ext2 loopback \
+    linux boot search search_fs_uuid configfile \
+    normal echo test sleep gfxterm font
+
+sbsign --key "$KEY" --cert "$CRT" \
+    --output "$WINBOOT_EFI/grubia32.efi" \
+    "$WINBOOT_EFI/grubia32.efi.unsigned"
+rm -f "$WINBOOT_EFI/grubia32.efi.unsigned"
+
+echo "EFI binaries ready in $WINBOOT_EFI"
