@@ -54,6 +54,7 @@ typedef struct {
   unsigned char	cur;		// Current partition number
   unsigned char	nxt;		// Next partition number
   unsigned char	dfs;		// File system flag
+  unsigned char	btf;        // Bootable flag
   unsigned char	pad;		// Padding
   unsigned long	bse;		// Partition start address
   unsigned long len;		// Partition length
@@ -68,13 +69,15 @@ int xd16_read (xd_t*, char*, int);
 int xd16_write (xd_t*, char*, int);
 #endif
 
-xd_t* xd_open (char*, int);
+xd_t* xd_open (char*, int, int);
 int xd_seek (xd_t*, unsigned long);
 int xd_enum (xd_t*, xde_t*);
 int xd_read (xd_t*, char*, int);
 int xd_write (xd_t*, char*, int);
 void xd_close (xd_t*);
 unsigned long xd_size (xd_t* xd);
+int xd_lock (xd_t * xd);
+void xd_unlock (void);
 
 #if defined(__cplusplus) || defined(c_plusplus)
 }

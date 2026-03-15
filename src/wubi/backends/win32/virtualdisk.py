@@ -23,7 +23,7 @@ Allocates disk space for the virtual disk
 '''
 
 import ctypes
-from ctypes import c_long, byref
+from ctypes import c_long, byref, wintypes
 import win32file
 import win32security
 import sys
@@ -56,13 +56,15 @@ def create_virtual_disk(path, size_mb):
         None)
     if file_handle == win32file.INVALID_HANDLE_VALUE:
         log.exception("Failed to create file %s" % path)
+        return
+    handle = wintypes.HANDLE(int(file_handle))
 
     # Set pointer to end of file
     file_pos = defs.LARGE_INTEGER()
     file_pos.QuadPart = size_mb * 1024 * 1024
     result = defs.SetFilePointerEx(
-                   file_handle,
-                   file_pos,
+                   handle,
+                   ctypes.c_longlong(file_pos.QuadPart),
                    defs.NULL,
                    defs.FILE_BEGIN)
     if not result:
@@ -73,35 +75,36 @@ def create_virtual_disk(path, size_mb):
         log.exception("Failed to extend file. Not enough free space?")
 
     # Set valid data (if possible), ignore errors
-    call_SetFileValidData(file_handle, file_pos)
+    call_SetFileValidData(handle, file_pos)
 
     # Set pointer to beginning of file
     file_pos.QuadPart = 0
     result = defs.SetFilePointerEx(
-                   file_handle,
-                   file_pos,
+                   handle,
+                   ctypes.c_longlong(file_pos.QuadPart),
                    defs.NULL,
                    defs.FILE_BEGIN)
     if not result:
         log.exception("Failed to set file pointer to beginning of file")
 
     # Zero chunk of file
-    zero_file(file_handle, clear_bytes)
+    zero_file(handle, clear_bytes)
 
     # Set pointer to end - clear_bytes of file
     file_pos.QuadPart = size_mb*1024*1024 - clear_bytes
     result = defs.SetFilePointerEx(
-                   file_handle,
-                   file_pos,
+                   handle,
+                   ctypes.c_longlong(file_pos.QuadPart),
                    defs.NULL,
                    defs.FILE_BEGIN)
     if not result:
         log.exception("Failed to set file pointer to end - clear_bytes of file")
 
     # Zero file
-    zero_file(file_handle, clear_bytes)
+    zero_file(handle, clear_bytes)
 
-    defs.CloseHandle(file_handle)
+
+    defs.CloseHandle(handle)
 
 def grant_privileges():
     # platform < 2 = Win9x/ME, platform 2 = WinNT/2000/XP/Vista/7/8/10
@@ -137,8 +140,8 @@ def call_SetFileValidData(file_handle, size_bytes):
 def zero_file(file_handle, clear_bytes):
    bytes_cleared = 0
    buf_size = 1000
-   n_bytes_written = c_long(0)
-   write_buf = "0"*buf_size
+   n_bytes_written = ctypes.c_ulong(0)
+   write_buf = b"\x00" * buf_size
 
    while bytes_cleared < clear_bytes:
        bytes_to_write = buf_size

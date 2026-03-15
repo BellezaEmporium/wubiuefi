@@ -178,8 +178,10 @@ class WindowsBackend(Backend):
         registry.set_value('HKEY_LOCAL_MACHINE', self.info.registry_key, 'DisplayIcon', self.info.icon)
         registry.set_value('HKEY_LOCAL_MACHINE', self.info.registry_key, 'DisplayVersion', self.info.version_revision)
         registry.set_value('HKEY_LOCAL_MACHINE', self.info.registry_key, 'Publisher', self.info.distro.name)
-        registry.set_value('HKEY_LOCAL_MACHINE', self.info.registry_key, 'URLInfoAbout', self.info.distro.website)
-        registry.set_value('HKEY_LOCAL_MACHINE', self.info.registry_key, 'HelpLink', self.info.distro.support)
+        if self.info.distro.website:
+            registry.set_value('HKEY_LOCAL_MACHINE', self.info.registry_key, 'URLInfoAbout', self.info.distro.website)
+        if self.info.distro.support:
+            registry.set_value('HKEY_LOCAL_MACHINE', self.info.registry_key, 'HelpLink', self.info.distro.support)
 
     def create_virtual_disks(self, associated_task):
         self.info.disks_dir
@@ -832,6 +834,9 @@ class WindowsBackend(Backend):
                 shutil.rmtree(dest)
             log.debug('Copying EFI folder %s -> %s' % (src, dest))
             shutil.copytree(src, dest)
+            grub_cfg = join_path(dest, 'grub.cfg')
+            efi_prefix = ('/' + dest[3:].replace('\\', '/') + '/').replace('//', '/')
+            write_file(grub_cfg, 'set prefix="%s"\nconfigfile "${prefix}wubildr.cfg"\n' % efi_prefix)
             if self.get_efi_arch(associated_task, efi_drive) == "ia32":
                 efi_path = join_path(dest, 'grubia32.efi')[2:]
             else:

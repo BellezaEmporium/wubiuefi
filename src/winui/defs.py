@@ -161,6 +161,29 @@ LoadCursorW = ctypes.windll.user32.LoadCursorW
 LoadCursorW.argtypes = [HINSTANCE, ctypes.c_wchar_p]
 LoadCursorW.restype = HCURSOR
 
+SetFilePointerEx = ctypes.windll.kernel32.SetFilePointerEx
+SetFilePointerEx.restype = wintypes.BOOL
+SetFilePointerEx.argtypes = [
+    wintypes.HANDLE,      # hFile
+    ctypes.c_longlong,    # liDistanceToMove
+    ctypes.c_void_p,      # lpNewFilePointer (NULL ok)
+    wintypes.DWORD,       # dwMoveMethod
+]
+
+WriteFile = ctypes.windll.kernel32.WriteFile
+WriteFile.restype = wintypes.BOOL
+WriteFile.argtypes = [
+    wintypes.HANDLE,                      # hFile
+    ctypes.c_void_p,                      # lpBuffer
+    wintypes.DWORD,                       # nNumberOfBytesToWrite
+    ctypes.POINTER(wintypes.DWORD),       # lpNumberOfBytesWritten ← DWORD, pas LONG
+    ctypes.c_void_p,                      # lpOverlapped
+]
+
+CloseHandle = ctypes.windll.kernel32.CloseHandle
+CloseHandle.restype = wintypes.BOOL
+CloseHandle.argtypes = [wintypes.HANDLE]
+
 SELF_HWND = object() #on instanciation the value has to be replaced with self._hwnd
 PARENT_HWND = object() #on instanciation the value has to be replaced with self.parent._hwnd
 APPLICATION_HINSTANCE = object() #on instanciation the value has to be replaced with self.application._hinstance

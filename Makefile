@@ -106,7 +106,8 @@ runbin: wubi
 	mkdir build/test
 	sh -c 'cd build/test && ../wubi --test'
 
-check_winboot: tools/check_winboot
+check_winboot: 
+	tools/check_winboot
 
 unittest:
 	tools/test

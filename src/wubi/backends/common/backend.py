@@ -445,7 +445,7 @@ class Backend(object):
     def copy_iso(self, iso_path, associated_task):
         if not iso_path:
             return
-        dest = join_path(self.info.install_dir, "installation.iso")
+        dest = join_path(self.info.install_dir, iso_path.split('/')[-1])
         check_iso = associated_task.add_subtask(
             self.check_iso,
             description = ("Checking installation files"))
@@ -471,7 +471,7 @@ class Backend(object):
             extract_iso = associated_task.add_subtask(
                 copy_file,
                 description = ("Extracting files from %s") % self.iso_path)
-            self.info.iso_path = join_path(self.info.install_dir, "installation.iso")
+            self.info.iso_path = join_path(self.info.install_dir, self.iso_path.split('/')[-1])
             try:
                 extract_iso(self.info.iso_path, self.info.iso_path)
             except Exception as err:
@@ -604,60 +604,43 @@ class Backend(object):
         copy_file(source, target)
 
     def create_preseed(self):
-        template_file = join_path(self.info.data_dir, 'preseed.' + self.info.distro.name)
-        if not os.path.exists(template_file):
-            template_file = join_path(self.info.data_dir, 'preseed.lupin')
-        template = read_file(template_file)
+        installer = getattr(self.info.distro, 'installer', 'subiquity')
+        
+        if installer == 'subiquity':
+            self._create_autoinstall()
+        else:
+            self._create_preseed_calamares()
+
+    def _create_autoinstall(self):
+        source = join_path(self.info.data_dir, 'autoinstall.yaml')
+        template = read_file(source)
         if isinstance(template, (bytes, bytearray, memoryview)):
             template = bytes(template).decode('utf-8', errors='ignore')
         if not template:
-            raise Exception("Could not read preseed template file: %s" % template_file)
-        if self.info.distro.packages:
-            distro_packages_skip = ''
-        else:
-            distro_packages_skip = '#'
-        partitioning = ""
-        partitioning += "d-i partman-auto/disk string LIDISK\n"
-        partitioning += "d-i partman-auto/method string loop\n"
-        partitioning += "d-i partman-auto-loop/partition string LIPARTITION\n"
-        partitioning += "d-i partman-auto-loop/recipe string \\\n"
-        disks_dir = unix_path(self.info.disks_dir) + '/'
-        if self.info.root_size_mb:
-            partitioning += '  %s 3000 %s %s $default_filesystem method{ format } format{ } use_filesystem{ } $default_filesystem{ } mountpoint{ / } . \\\n' \
-            %(disks_dir + 'root.disk', self.info.root_size_mb, self.info.root_size_mb)
-        if self.info.swap_size_mb:
-            partitioning += '  %s 100 %s %s linux-swap method{ swap } format{ } . \\\n' \
-            %(disks_dir + 'swap.disk', self.info.swap_size_mb, self.info.swap_size_mb)
-        if self.info.home_size_mb:
-            partitioning += '  %s 100 %s %s $default_filesystem method{ format } format{ } use_filesystem{ } $default_filesystem{ } mountpoint{ /home } . \\\n' \
-            %(disks_dir + 'home.disk', self.info.home_size_mb, self.info.home_size_mb)
-        if self.info.usr_size_mb:
-            partitioning += '  %s 100 %s %s $default_filesystem method{ format } format{ } use_filesystem{ } $default_filesystem{ } mountpoint{ /usr } . \\\n' \
-            %(disks_dir + 'usr.disk', self.info.usr_size_mb, self.info.usr_size_mb)
-        partitioning += "\n"
-        safe_host_username = self.info.host_username.replace(" ", "+")
-        user_directory = self.info.user_directory.replace("\\", "/")[2:]
-        host_os_name = self.info.windows_version2 or "Windows"
-        password = md5_password(self.info.password)
+            raise Exception("Could not read autoinstall template: %s" % source)
+        hashed_password = md5_password(self.info.password)
         dic = dict(
-            timezone = self.info.timezone,
-            password = password,
-            user_full_name = self.info.user_full_name,
-            distro_packages_skip  = distro_packages_skip,
-            distro_packages = self.info.distro.packages,
-            host_username = self.info.host_username,
-            username = self.info.username,
-            partitioning = partitioning,
-            user_directory = user_directory,
-            safe_host_username = safe_host_username,
-            host_os_name = host_os_name,
-            custom_installation_dir = unix_path(self.info.custominstall),)
+            locale              = self.info.locale,
+            keyboard_layout     = self.info.keyboard_layout,
+            keyboard_variant    = self.info.keyboard_variant,
+            timezone            = self.info.timezone,
+            realname            = self.info.user_full_name,
+            hostname            = self.info.distro.name.lower().replace(' ', '-'),
+            username            = self.info.username,
+            hashed_password     = hashed_password,
+            source_id           = 'ubuntu-desktop',
+        )
         content = template
-        for k,v in list(dic.items()):
-            k = "$(%s)" % k
-            content = content.replace(k, v if v is not None else "")
-        preseed_file = join_path(self.info.custominstall, "preseed.cfg")
-        write_file(preseed_file, content)
+        for k, v in dic.items():
+            content = content.replace('$(%s)' % k, v if v is not None else '')
+        autoinstall_dir = join_path(self.info.custominstall, 'autoinstall')
+        if not os.path.isdir(autoinstall_dir):
+            os.makedirs(autoinstall_dir)
+        write_file(join_path(autoinstall_dir, 'autoinstall.yaml'), content)
+
+    def _create_preseed_calamares(self):
+        # Calamares doesn't need preseeds, so we pass it on (the dutchie innit)
+        pass
 
     def modify_bootloader(self):
         #platform specific
@@ -756,7 +739,8 @@ class Backend(object):
         pass
 
     def modify_grub_configuration(self):
-        template_file = join_path(self.info.data_dir, 'grub.install.cfg')
+        installer = getattr(self.info.distro, 'installer', 'subiquity')
+        template_file = join_path(self.info.data_dir, 'grub.install.%s.cfg' % installer)
         template = read_file(template_file)
         if template is None:
             raise Exception("Could not read grub template file: %s" % template_file)

@@ -73,7 +73,12 @@ def download(url, filename=None, associated_task=None, web_proxy=None):
     if filename is None:
         filename = os.path.basename(url)
 
-    response = requests.get(url, proxies=proxies, stream=True, timeout=30)
+    response = requests.get(
+        url,
+        proxies=proxies,
+        stream=True,
+        timeout=(10, 300)
+    )
     response.raise_for_status()
 
     content_length = int(response.headers.get('content-length', 0))
