@@ -12,7 +12,7 @@ This is a base rework of what Hakuna Matata and the Canonical team has done. Thi
 This was forked and reworked solely for my own sake of trying to install an Ubuntu distro "properly" on another computer I possess.
 It might have some quacks and flaws (might not look good as well).
 
-I STRONGLY advise into disabling Secure Boot BEFORE launching yourself into this for now, as I haven't done the necessary for signing stuff (yet). (Might also get over App Control block for Win10+).
+I STRONGLY advise disabling Secure Boot BEFORE launching yourself into this for now, as I haven't done the necessary for signing stuff (yet). (Might also get over App Control block for Win10+).
 
 ## Compiling
 
