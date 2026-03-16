@@ -1,6 +1,6 @@
 import re
-import tkinter as tk
-from tkinter import ttk, messagebox
+import ttkbootstrap as ttk
+from ttkbootstrap.constants import *
 from gettext import gettext as _
 from .page import Page
 from wubi.backends.common.mappings import (
@@ -16,60 +16,65 @@ reserved_usernames = [str(n) for n in reserved_usernames]
 re_username_first = re.compile(r"^[a-z]")
 re_username = re.compile(r"[a-z][-a-z0-9_]*$")
 
-
 class InstallationPage(Page):
 
     def on_init(self):
-        tk.Label(self, text=_("Installing"), font=("Tahoma", 13, "bold"), bg="#ffffff").pack(pady=(16, 0))
-        tk.Label(self, text=_("Please select username and password for the new account"),
-                 bg="#ffffff").pack()
+        ttk.Label(self, text=_("Installing"),
+                  font=("Segoe UI", 13, "bold"),
+                  bootstyle="primary").pack(pady=(16, 0))
+        ttk.Label(self, text=_("Please select username and password for the new account")).pack()
 
-        form = tk.Frame(self, bg="#ffffff")
-        form.pack(fill="both", expand=True, padx=24, pady=12)
+        form = ttk.Frame(self)
+        form.pack(fill=BOTH, expand=YES, padx=24, pady=4)
 
-        tk.Label(form, text=_("Installation drive:"), bg="#ffffff", anchor="w").grid(row=0, column=0, sticky="w")
-        self._drive_var = tk.StringVar()
+        # Colonne gauche
+        ttk.Label(form, text=_("Installation drive:"), anchor="w").grid(row=0, column=0, sticky="w")
+        self._drive_var = ttk.StringVar()
         self.target_drive_list = ttk.Combobox(form, textvariable=self._drive_var, state="readonly", width=22)
-        self.target_drive_list.grid(row=1, column=0, sticky="w", pady=(0, 10))
+        self.target_drive_list.grid(row=1, column=0, sticky="w", pady=(0, 4))
         self.target_drive_list.bind("<<ComboboxSelected>>", lambda e: self.on_drive_change())
 
-        tk.Label(form, text=_("Installation size:"), bg="#ffffff", anchor="w").grid(row=2, column=0, sticky="w")
-        self._size_var = tk.StringVar()
+        ttk.Label(form, text=_("Installation size:"), anchor="w").grid(row=2, column=0, sticky="w")
+        self._size_var = ttk.StringVar()
         self.size_list = ttk.Combobox(form, textvariable=self._size_var, state="readonly", width=22)
-        self.size_list.grid(row=3, column=0, sticky="w", pady=(0, 10))
+        self.size_list.grid(row=3, column=0, sticky="w", pady=(0, 4))
         self.size_list.bind("<<ComboboxSelected>>", lambda e: self.on_size_change())
 
-        tk.Label(form, text=_("Desktop environment:"), bg="#ffffff", anchor="w").grid(row=4, column=0, sticky="w")
-        self._distro_var = tk.StringVar()
+        ttk.Label(form, text=_("Desktop environment:"), anchor="w").grid(row=4, column=0, sticky="w")
+        self._distro_var = ttk.StringVar()
         self.distro_list = ttk.Combobox(form, textvariable=self._distro_var, state="readonly", width=22)
-        self.distro_list.grid(row=5, column=0, sticky="w", pady=(0, 10))
+        self.distro_list.grid(row=5, column=0, sticky="w", pady=(0, 4))
         self.distro_list.bind("<<ComboboxSelected>>", lambda e: self.on_distro_change())
 
-        tk.Label(form, text=_("Language:"), bg="#ffffff", anchor="w").grid(row=0, column=1, sticky="w", padx=(20, 0))
-        self._lang_var = tk.StringVar()
+        # Colonne droite
+        ttk.Label(form, text=_("Language:"), anchor="w").grid(row=0, column=1, sticky="w", padx=(20, 0))
+        self._lang_var = ttk.StringVar()
         self.language_list = ttk.Combobox(form, textvariable=self._lang_var, state="readonly", width=22)
-        self.language_list.grid(row=1, column=1, sticky="w", padx=(20, 0), pady=(0, 10))
+        self.language_list.grid(row=1, column=1, sticky="w", padx=(20, 0), pady=(0, 4))
         self.language_list.bind("<<ComboboxSelected>>", lambda e: self.on_language_change())
 
-        tk.Label(form, text=_("Username:"), bg="#ffffff", anchor="w").grid(row=2, column=1, sticky="w", padx=(20, 0))
+        ttk.Label(form, text=_("Username:"), anchor="w").grid(row=2, column=1, sticky="w", padx=(20, 0))
         username = self.info.host_username or ""
         username = re.sub(r"[^-a-z0-9_]", "", username.strip().lower())
-        self._username_var = tk.StringVar(value=username)
-        tk.Entry(form, textvariable=self._username_var, width=24).grid(row=3, column=1, sticky="w", padx=(20, 0), pady=(0, 10))
+        self._username_var = ttk.StringVar(value=username)
+        ttk.Entry(form, textvariable=self._username_var, width=24).grid(row=3, column=1, sticky="w", padx=(20, 0), pady=(0, 4))
 
-        tk.Label(form, text=_("Password:"), bg="#ffffff", anchor="w").grid(row=4, column=1, sticky="w", padx=(20, 0))
-        self._pw1_var = tk.StringVar(value=self.info.password or "")
-        self._pw2_var = tk.StringVar(value=self.info.password or "")
-        tk.Entry(form, textvariable=self._pw1_var, show="*", width=24).grid(row=5, column=1, sticky="w", padx=(20, 0))
-        tk.Entry(form, textvariable=self._pw2_var, show="*", width=24).grid(row=6, column=1, sticky="w", padx=(20, 0), pady=(0, 10))
+        ttk.Label(form, text=_("Password:"), anchor="w").grid(row=4, column=1, sticky="w", padx=(20, 0))
+        self._pw1_var = ttk.StringVar(value=self.info.password or "")
+        self._pw2_var = ttk.StringVar(value=self.info.password or "")
+        ttk.Entry(form, textvariable=self._pw1_var, show="*", width=24).grid(row=5, column=1, sticky="w", padx=(20, 0))
+        ttk.Entry(form, textvariable=self._pw2_var, show="*", width=24).grid(row=6, column=1, sticky="w", padx=(20, 0), pady=(0, 4))
 
-        self._error_var = tk.StringVar()
-        tk.Label(self, textvariable=self._error_var, fg="red", bg="#ffffff").pack()
+        self._error_var = ttk.StringVar()
+        ttk.Label(self, textvariable=self._error_var, bootstyle="danger").pack()
 
-        nav = tk.Frame(self, bg="#eeeeee")
-        nav.pack(side="bottom", fill="x")
-        tk.Button(nav, text=_("Cancel"), command=self.on_cancel).pack(side="right", padx=8, pady=8)
-        tk.Button(nav, text=_("Install"), command=self.on_install).pack(side="right", padx=4, pady=8)
+        ttk.Separator(self).pack(fill=X, side=BOTTOM, pady=(4, 0))
+        nav = ttk.Frame(self, padding=(8, 6))
+        nav.pack(side=BOTTOM, fill=X)
+        ttk.Button(nav, text=_("Cancel"), command=self.on_cancel,
+                   bootstyle="secondary-outline").pack(side=RIGHT, padx=8)
+        ttk.Button(nav, text=_("Install"), command=self.on_install,
+                   bootstyle="success").pack(side=RIGHT, padx=4)
 
         self.populate_language_list()
         self.populate_distro_list()

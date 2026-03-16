@@ -1,19 +1,18 @@
-import tkinter as tk
+import ttkbootstrap as ttk
+from ttkbootstrap.constants import *
 
-class Page(tk.Frame):
-    def __init__(self, frontend):
-        super().__init__(frontend.root, bg="#ffffff")
+class Page(ttk.Frame):
+    def __init__(self, parent, frontend):
+        super().__init__(parent, padding=20)
         self.frontend = frontend
-        self.application = frontend.application
-        self.info = frontend.application.info
+        self.info = frontend.app.info
         self.on_init()
 
     def on_init(self):
         pass
 
     def show(self):
-        self.place(x=0, y=0, relwidth=1, relheight=1)
-        self.lift()
+        self.pack(fill=BOTH, expand=YES)
 
     def hide(self):
-        self.place_forget()
+        self.pack_forget()

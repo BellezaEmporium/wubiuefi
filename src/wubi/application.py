@@ -72,6 +72,12 @@ class Info(object):
     }
     _alias_reverse = {}
 
+    def __getattr__(self, name):
+        canonical = self._ALIASES.get(name)
+        if canonical:
+            return object.__getattribute__(self, canonical)
+        raise AttributeError(name)
+
     def __init__(self):
         object.__setattr__(self, "_alias_reverse",
                            {v: k for k, v in self._ALIASES.items()})
@@ -278,9 +284,15 @@ class Wubi(object):
                 self.frontend.quit()
             except Exception:
                 pass
+        self.frontend = None
 
     def on_quit(self):
         log.debug("application.on_quit")
+        if self.frontend:
+            try:
+                self.frontend.quit()
+            except Exception:
+                pass
         if self.info.force_exit:
             log.info("Forceful exit via sys.exit")
             sys.exit(0)
@@ -294,8 +306,8 @@ class Wubi(object):
     def get_frontend(self):
         if self.frontend:
             return self.frontend
-        from wubi.frontends.tkinter.frontend import TkFrontend
-        self.frontend = TkFrontend(self)
+        from wubi.frontends.tkinter.frontend import WindowsFrontend
+        self.frontend = WindowsFrontend(self)
         return self.frontend
 
     # ── Task routing ───────────────────────
@@ -340,7 +352,9 @@ class Wubi(object):
 
         log.info("Running the installer...")
         fe = self.get_frontend()
-        fe.show_installation_settings()
+        fe.show_installer_page()
+        if self.info.quitting:
+            raise errors.QuitException()
         log.info("Settings received")
         if self.backend:
             fe.run_tasks(self.backend.get_installation_tasklist())

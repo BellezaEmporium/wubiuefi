@@ -1,1 +1,1 @@
-from .frontend import TkFrontend
+from .frontend import WindowsFrontend

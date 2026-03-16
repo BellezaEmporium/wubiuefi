@@ -17,16 +17,15 @@ all: build check
 build: wubi
 
 wubi: wubi-pre-build
-	/mnt/c/Python313/python.exe -m PyInstaller --noconfirm wubi.spec
-	mv dist/$(PACKAGE).exe build/wubi.exe
+	$(PYTHON_WIN) -m PyInstaller --noconfirm wubi.spec
 
 wubizip: wubi-pre-build
-	sh -c 'PYTHONPATH=src tools/pywine pypack --verbose --outputdir=build/wubi src/main.py data build/bin build/version.py build/winboot build/translations'
+	sh -c 'PYTHONPATH=src pypack --verbose --outputdir=build/wubi src/main.py data build/bin build/version.py build/winboot build/translations'
 	cp "$(PYTHON_DLL)" build/wubi
 	sh -c 'cd build && zip -r wubi.zip wubi'
 
 wubi-pre-build: check_winboot winboot2 src/main.py src/wubi/*.py version.py translations
-	/mnt/c/Python313/python.exe -m pip install -r requirements.txt
+	$(PYTHON_WIN) -m pip install -r requirements.txt
 	rm -rf build/wubi
 	rm -rf build/bin
 	cp -a blobs build/bin

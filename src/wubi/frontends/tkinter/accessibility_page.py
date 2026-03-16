@@ -1,28 +1,27 @@
-import tkinter as tk
+import ttkbootstrap as ttk
+from ttkbootstrap.constants import *
 from gettext import gettext as _
 from .page import Page
 import logging
 
 log = logging.getLogger("TkAccessibilityPage")
 
-
 class AccessibilityPage(Page):
 
     def on_init(self):
         self.info.accessibility = ""
 
-        tk.Label(self, text=_("Accessibility profile"),
-                 font=("Tahoma", 13, "bold"), bg="#ffffff").pack(pady=(16, 0))
-        tk.Label(self, text=_("Please select the appropriate accessibility profile"),
-                 bg="#ffffff").pack()
+        ttk.Label(self, text=_("Accessibility profile"),
+                  font=("Segoe UI", 13, "bold"),
+                  bootstyle="primary").pack(pady=(16, 0))
+        ttk.Label(self, text=_("Please select the appropriate accessibility profile")).pack()
 
-        body = tk.Frame(self, bg="#ffffff")
-        body.pack(fill="both", expand=True, padx=24, pady=12)
+        body = ttk.Frame(self)
+        body.pack(fill=BOTH, expand=YES, padx=24, pady=12)
 
-        self._access_var = tk.StringVar(value="none")
+        self._access_var = ttk.StringVar(value="none")
 
-        # Groupe Visibilité
-        vis = tk.LabelFrame(body, text=_("Visibility Aids"), bg="#ffffff")
+        vis = ttk.Labelframe(body, text=_("Visibility Aids"), padding=8)
         vis.grid(row=0, column=0, padx=8, pady=8, sticky="nsew")
         for val, label in [
             ("access=visibility1", _("Visibility1")),
@@ -30,26 +29,28 @@ class AccessibilityPage(Page):
             ("access=visibility3", _("Visibility3")),
             ("braille=ask",        _("Braille")),
         ]:
-            tk.Radiobutton(vis, text=label, variable=self._access_var,
-                           value=val, bg="#ffffff").pack(anchor="w", padx=8, pady=2)
+            ttk.Radiobutton(vis, text=label, variable=self._access_var,
+                            value=val).pack(anchor=W, pady=2)
 
-        # Groupe Mobilité
-        mob = tk.LabelFrame(body, text=_("Mobility Aids"), bg="#ffffff")
+        mob = ttk.Labelframe(body, text=_("Mobility Aids"), padding=8)
         mob.grid(row=0, column=1, padx=8, pady=8, sticky="nsew")
         for val, label in [
             ("access=mobility1", _("Mobility1")),
             ("access=mobility2", _("Mobility2")),
         ]:
-            tk.Radiobutton(mob, text=label, variable=self._access_var,
-                           value=val, bg="#ffffff").pack(anchor="w", padx=8, pady=2)
+            ttk.Radiobutton(mob, text=label, variable=self._access_var,
+                            value=val).pack(anchor=W, pady=2)
 
-        tk.Radiobutton(body, text=_("None"), variable=self._access_var,
-                       value="none", bg="#ffffff").grid(row=1, column=0, sticky="w", padx=8)
+        ttk.Radiobutton(body, text=_("None"), variable=self._access_var,
+                        value="none").grid(row=1, column=0, sticky=W, padx=8)
 
-        nav = tk.Frame(self, bg="#eeeeee")
-        nav.pack(side="bottom", fill="x")
-        tk.Button(nav, text=_("Cancel"), command=self.on_cancel).pack(side="right", padx=8, pady=8)
-        tk.Button(nav, text=_("Next >>"), command=self.on_next).pack(side="right", padx=4, pady=8)
+        ttk.Separator(self).pack(fill=X, side=BOTTOM, pady=(4, 0))
+        nav = ttk.Frame(self, padding=(8, 6))
+        nav.pack(side=BOTTOM, fill=X)
+        ttk.Button(nav, text=_("Cancel"), command=self.on_cancel,
+                   bootstyle="secondary-outline").pack(side=RIGHT, padx=8)
+        ttk.Button(nav, text=_("Next >>"), command=self.on_next,
+                   bootstyle="primary").pack(side=RIGHT, padx=4)
 
     def on_cancel(self):
         self.frontend.cancel()

@@ -1,143 +1,144 @@
-import tkinter as tk
-from tkinter import messagebox
-from gettext import gettext as _
-from wubi.errors import QuitException
-from .installation_page import InstallationPage
-from .progress_page import ProgressPage
-from .accessibility_page import AccessibilityPage
+import ttkbootstrap as ttk
+from ttkbootstrap.constants import *
+import gettext
 import logging
+import gettext
+_ = gettext.gettext
+import threading
 
-log = logging.getLogger("TkFrontend")
+log = logging.getLogger("WindowsFrontend")
 
-
-class TkFrontend:
+class WindowsFrontend:
     def __init__(self, application):
-        self.application = application
+        info = application.info
+        t = gettext.translation(
+            info.application_name,
+            localedir=info.locale_dir,
+            languages=[info.language],
+            fallback=True
+        )
+        t.install()
+
+        self.app = application
         self.current_page = None
-        self.tasklist = None
-
-        self.root = tk.Tk()
-        self.root.title(application.info.application_name)
-        self.root.geometry("504x385")
-        self.root.resizable(False, False)
+        self.root = ttk.Window(
+            title=info.application_name,
+            themename="simplex",
+            size=(540, 520),
+            resizable=(False, False)
+        )
         self.root.protocol("WM_DELETE_WINDOW", self.cancel)
-
-        try:
-            self.root.iconbitmap(str(application.info.application_icon))
-        except Exception:
-            pass
+        self._page_done = threading.Event()
 
     def run(self):
-        if self.application.info.quitting:
-            raise QuitException()
         self.root.mainloop()
-        if self.application.info.quitting:
-            raise QuitException()
 
     def stop(self):
-        """Quitte la boucle mainloop courante sans fermer la fenêtre."""
-        self.root.quit()
-
+        self._page_done.set()
+    
     def quit(self):
-        log.debug("frontend.quit")
-        self.application.info.quitting = True
-        try:
-            self.root.destroy()
-        except Exception:
-            pass
+        """Closes the frontend and exits the event loop."""
+        self.root.quit()
+        self.root.destroy()
 
     def cancel(self, confirm=False):
         if confirm:
-            if not self.ask_confirmation(_("Are you sure you want to quit?")):
+            from ttkbootstrap.dialogs import Messagebox
+            if not Messagebox.yesno(_("Are you sure you want to quit?"), _("Confirm")):
                 return
-        self.quit()
-
-    def on_quit(self):
-        if self.tasklist and self.tasklist.is_alive():
-            log.debug("Stopping background tasks: %s" % self.tasklist.name)
-            self.tasklist.cancel()
-            self.tasklist.join(3)
-            if self.tasklist.is_alive():
-                self.application.info.force_exit = True
-        self.application.on_quit()
+        log.info("Operation cancelled")
+        self.app.info.quitting = True
+        self.stop()
+        self.root.quit() 
 
     def show_page(self, page):
-        if self.application.info.quitting:
-            raise QuitException()
         if self.current_page is page:
-            page.show()
+            self.current_page.show()
             return
         if self.current_page:
             self.current_page.hide()
         self.current_page = page
         page.show()
-        self.root.deiconify()
-        self.run()
 
-    def show_installation_settings(self):
-        try:
-            self.installation_page = InstallationPage(self)
-        except Exception:
-            import traceback
-            log.error("InstallationPage init failed:\n%s", traceback.format_exc())
-            self.show_error_message("No distributions available.")
-            self.application.quit()
-            return
-        if self.application.info.quitting:
-            return
-        if not self.application.info.non_interactive:
-            self.show_page(self.installation_page)
+    def _wait_for_page(self):
+        self._page_done.clear()
+        while not self._page_done.is_set():
+            self.root.update()
+            self.root.after(50, lambda: None)
+            self._page_done.wait(0.05)
 
-    def show_cd_menu_page(self):
-        from .cd_menu_page import CDMenuPage
-        self.cd_menu_page = CDMenuPage(self)
-        self.show_page(self.cd_menu_page)
-
-    def show_cdboot_menu_page(self):
-        from .cdboot_page import CDBootPage
-        self.cdboot_menu_page = CDBootPage(self)
-        self.show_page(self.cdboot_menu_page)
-
-    def show_uninstallation_settings(self):
-        from .uninstallation_page import UninstallationPage
-        self.uninstallation_page = UninstallationPage(self)
-        self.show_page(self.uninstallation_page)
+    def show_installer_page(self):
+        from .installation_page import InstallationPage
+        from .accessibility_page import AccessibilityPage
+        self.accessibility_page = AccessibilityPage(self.root, self)
+        self.installation_page = InstallationPage(self.root, self)
+        self.show_page(self.installation_page)
+        self.root.update()
+        self._wait_for_page()
 
     def show_installation_finish_page(self):
         from .installation_finish_page import InstallationFinishPage
-        self.installation_finish_page = InstallationFinishPage(self)
+        self.installation_finish_page = InstallationFinishPage(self.root, self)
         self.show_page(self.installation_finish_page)
+        self._wait_for_page()
 
     def show_uninstallation_finish_page(self):
         from .uninstallation_finish_page import UninstallationFinishPage
-        self.uninstallation_finish_page = UninstallationFinishPage(self)
+        self.uninstallation_finish_page = UninstallationFinishPage(self.root, self)
         self.show_page(self.uninstallation_finish_page)
+        self._wait_for_page()
+
+    def show_uninstallation_settings(self):
+        from .uninstallation_page import UninstallationPage
+        self.uninstallation_page = UninstallationPage(self.root, self)
+        self.show_page(self.uninstallation_page)
+        self._wait_for_page()
+
+    def show_cd_menu_page(self):
+        from .cd_menu_page import CDMenuPage
+        from .cd_finish_page import CDFinishPage
+        self.cd_menu_page = CDMenuPage(self.root, self)
+        self.cd_finish_page = CDFinishPage(self.root, self)
+        self.show_page(self.cd_menu_page)
+        self._wait_for_page()
+
+    def show_cdboot_menu_page(self):
+        # Compatibility alias expected by application.py.
+        self.show_cd_menu_page()
+
+    def show_error_message(self, message, title=None):
+        from ttkbootstrap.dialogs import Messagebox
+        if not title:
+            title = self.root.title()
+        Messagebox.show_error(str(message), str(title), parent=self.root)
+
+    def show_info_message(self, message, title=None):
+        from ttkbootstrap.dialogs import Messagebox
+        if not title:
+            title = self.root.title()
+        return Messagebox.show_info(str(message), str(title), parent=self.root)
+
+    def ask_confirmation(self, message, title=None):
+        from ttkbootstrap.dialogs import Messagebox
+        if not title:
+            title = self.root.title()
+        return bool(Messagebox.yesno(str(message), str(title), parent=self.root))
+
+    def ask_to_retry(self, message, title=None):
+        from tkinter import messagebox
+        if not title:
+            title = self.root.title()
+        return messagebox.askretrycancel(str(title), str(message), parent=self.root)
 
     def run_tasks(self, tasklist):
-        self.progress_page = ProgressPage(self)
+        from .progress_page import ProgressPage
+        self.progress_page = ProgressPage(self.root, self)
         tasklist.callback = self.progress_page.on_progress
         self.tasklist = tasklist
         tasklist.start()
         self.show_page(self.progress_page)
-        if isinstance(tasklist.error, Exception):
-            raise tasklist.error
-        elif isinstance(tasklist.error, tuple):
-            raise tasklist.error[0](tasklist.error[1]).with_traceback(tasklist.error[2])
-
-    def show_error_message(self, message, title=None):
-        messagebox.showerror(title or self.root.title(), str(message))
-
-    def show_info_message(self, message, title=None):
-        messagebox.showinfo(title or self.root.title(), str(message))
-
-    def ask_confirmation(self, message, title=None):
-        return messagebox.askyesno(title or self.root.title(), str(message))
-
-    def set_title(self, title):
-        self.root.title(title)
-
-    def set_icon(self, path):
-        try:
-            self.root.iconbitmap(str(path))
-        except Exception:
-            pass
+        self.root.update()
+        self._wait_for_page()
+        if tasklist.error:
+            exc_type, exc_value, exc_tb = tasklist.error
+            raise exc_value.with_traceback(exc_tb)

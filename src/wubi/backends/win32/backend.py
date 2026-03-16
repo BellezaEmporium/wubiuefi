@@ -115,6 +115,10 @@ class WindowsBackend(Backend):
         self.info.previous_distro_name = self.get_previous_distro_name()
         self.info.hostname    = os.environ.get('COMPUTERNAME', 'wubi-host').lower()
         self.info.username    = self.info.host_username
+        root_dir = os.path.abspath(os.path.join(os.path.dirname(self.info.original_exe), '..'))
+        self.info.root_dir = root_dir
+        self.info.locale_dir = os.path.join(root_dir, 'translations')
+        self.info.translations_dir = self.info.locale_dir
 
     def check_secure_boot(self):
         """Checks if the computer has Secure Boot enabled. 
@@ -838,35 +842,27 @@ class WindowsBackend(Backend):
             efi_prefix = ('/' + dest[3:].replace('\\', '/') + '/').replace('//', '/')
             write_file(grub_cfg, 'set prefix="%s"\nconfigfile "${prefix}wubildr.cfg"\n' % efi_prefix)
             if self.get_efi_arch(associated_task, efi_drive) == "ia32":
-                efi_path = join_path(dest, 'grubia32.efi')[2:]
+                efi_path = os.path.normpath(join_path(dest, 'grubia32.efi'))[2:]
             else:
-                efi_path = join_path(dest, 'shimx64.efi')[2:]
+                efi_path = os.path.normpath(join_path(dest, 'shimx64.efi'))[2:]
             return efi_path
         finally:
             if mounted_temporarily:
                 run_command(['mountvol', efi_drive, '/d'])
 
-    def get_efi_arch(self, associated_task, efi_drive):
-        machine=0
-        bootmgfw=join_path(efi_drive,'EFI','Microsoft','Boot','bootmgfw.efi')
-        if os.path.exists(bootmgfw):
-            f=open(bootmgfw, 'rb')
-            s=f.read(2)
-            if s=='MZ':
-                f.seek(60)
-                s=f.read(4)
-                header_offset=struct.unpack("<L", s)[0]
-                f.seek(header_offset+4)
-                s=f.read(2)
-                machine=struct.unpack("<H", s)[0]
-            f.close()
-        if machine==332:
-            efi_arch = "ia32"
-        elif machine==34404:
-            efi_arch = "x64"
-        else:
-            efi_arch ="unknown"
-        log.debug("efi_arch=%s" % efi_arch)
+    def get_efi_arch(self, associated_task, efidrive):
+        arch = self.info.arch.lower()
+        mapping = {
+            "amd64":   "x64",
+            "x86_64":  "x64",
+            "x86":     "ia32",
+            "i386":    "ia32",
+            "i686":    "ia32",
+            "arm64":   "arm64",
+            "aarch64": "arm64",
+        }
+        efi_arch = mapping.get(arch, "x64")
+        log.debug("efi_arch: %s (from arch=%s)" % (efi_arch, arch))
         return efi_arch
 
     def undo_EFI_folder(self, associated_task):
@@ -892,19 +888,14 @@ class WindowsBackend(Backend):
             log.error(err)
         return
 
+    # upd : no need to modify all drives for it, w/ efi, only the EFI partition is important.
     def modify_bootloader(self, associated_task):
-        for drive in self.info.drives:
-            if drive.type not in ('removable', 'hd'):
-                continue
-            mb = None
-            if self.info.bootloader == 'xp':
-                mb = associated_task.add_subtask(self.modify_bootini)
-            elif self.info.bootloader == '98':
-                mb = associated_task.add_subtask(self.modify_configsys)
-            elif self.info.bootloader == 'vista':
-                mb = associated_task.add_subtask(self.modify_bcd)
-            if mb:
-                mb(drive)
+        if self.info.bootloader == "vista":
+            associated_task.add_subtask(self.modify_bcd)
+        elif self.info.bootloader == "xp":
+            associated_task.add_subtask(self.modify_bootini)
+        elif self.info.bootloader == "98":
+            associated_task.add_subtask(self.modify_configsys)
 
     def undo_bootloader(self, associated_task):
         winboot_files = ['wubildr', 'wubildr.mbr', 'wubildr.exe']
@@ -1112,7 +1103,7 @@ class WindowsBackend(Backend):
         if not match:
             raise Exception("Could not extract BCD entry ID from output: %s" % id_text)
         id = match.group(0)
-        mbr_path = join_path(self.info.target_dir, 'winboot', 'wubildr.mbr')[2:]
+        mbr_path = os.path.normpath(join_path(self.info.target_dir, 'winboot', 'wubildr.mbr'))[2:]
         run_command([bcdedit, '/set', id, 'device', 'partition=%s' % self.info.target_drive.path])
         run_command([bcdedit, '/set', id, 'path', mbr_path])
         run_command([bcdedit, '/displayorder', id, '/addlast'])

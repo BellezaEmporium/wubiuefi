@@ -1,37 +1,36 @@
-import tkinter as tk
+import ttkbootstrap as ttk
+from ttkbootstrap.constants import *
 from gettext import gettext as _
 from .page import Page
 import logging
 
 log = logging.getLogger("TkCDMenuPage")
 
-
 class CDMenuPage(Page):
 
     def on_init(self):
-        tk.Label(self, text=_("CD detected"),
-                 font=("Tahoma", 13, "bold"), bg="#ffffff").pack(pady=(16, 0))
+        ttk.Label(self, text=_("CD detected"),
+                  font=("Segoe UI", 13, "bold"),
+                  bootstyle="primary").pack(pady=(16, 0))
+        ttk.Label(self,
+                  text=_("A Ubuntu CD has been detected. What do you want to do?"),
+                  wraplength=440).pack(pady=8)
 
-        distro = getattr(self.info.cd_distro, "name", "") if self.info.cd_distro else ""
-        tk.Label(self,
-                 text=_("A Ubuntu CD has been detected. What do you want to do?"),
-                 bg="#ffffff", wraplength=440).pack(pady=8)
+        self._choice_var = ttk.StringVar(value="install")
+        ttk.Radiobutton(self, text=_("Install inside Windows"),
+                        variable=self._choice_var, value="install").pack(anchor=W, padx=60)
+        ttk.Radiobutton(self, text=_("Boot from CD"),
+                        variable=self._choice_var, value="cdboot").pack(anchor=W, padx=60)
+        ttk.Radiobutton(self, text=_("Demo Ubuntu without any change to your computer"),
+                        variable=self._choice_var, value="demo").pack(anchor=W, padx=60)
 
-        self._choice_var = tk.StringVar(value="install")
-        tk.Radiobutton(self, text=_("Install inside Windows"),
-                       variable=self._choice_var, value="install",
-                       bg="#ffffff").pack(anchor="w", padx=60)
-        tk.Radiobutton(self, text=_("Boot from CD"),
-                       variable=self._choice_var, value="cdboot",
-                       bg="#ffffff").pack(anchor="w", padx=60)
-        tk.Radiobutton(self, text=_("Demo Ubuntu without any change to your computer"),
-                       variable=self._choice_var, value="demo",
-                       bg="#ffffff").pack(anchor="w", padx=60)
-
-        nav = tk.Frame(self, bg="#eeeeee")
-        nav.pack(side="bottom", fill="x")
-        tk.Button(nav, text=_("Cancel"), command=self.on_cancel).pack(side="right", padx=8, pady=8)
-        tk.Button(nav, text=_("Next >>"), command=self.on_next).pack(side="right", padx=4, pady=8)
+        ttk.Separator(self).pack(fill=X, side=BOTTOM, pady=(4, 0))
+        nav = ttk.Frame(self, padding=(8, 6))
+        nav.pack(side=BOTTOM, fill=X)
+        ttk.Button(nav, text=_("Cancel"), command=self.on_cancel,
+                   bootstyle="secondary-outline").pack(side=RIGHT, padx=8)
+        ttk.Button(nav, text=_("Next >>"), command=self.on_next,
+                   bootstyle="primary").pack(side=RIGHT, padx=4)
 
     def on_cancel(self):
         self.frontend.cancel()
