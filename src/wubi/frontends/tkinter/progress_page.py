@@ -45,7 +45,6 @@ class ProgressPage(Page):
     def on_progress(self, task, message=None):
         """Callback appelé depuis le thread des tâches — doit passer par after()."""
         self.frontend._ui_queue.put(task)
-        self.frontend.root.after(0, self._update, task)
 
     def _update(self, task):
         tasklist = task.get_root()

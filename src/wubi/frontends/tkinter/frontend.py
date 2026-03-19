@@ -78,8 +78,7 @@ class WindowsFrontend:
             if hasattr(self, 'tasklist') and self.tasklist.status in (
                 Task.COMPLETED, Task.FAILED, Task.CANCELLED
             ):
-                if hasattr(self, 'tasklist') and self.tasklist.current_subtask:
-                    log.debug("Current subtask: %s" % self.tasklist.current_subtask.name)
+                self.tasklist = None
                 self.stop()
 
     def show_installer_page(self):
