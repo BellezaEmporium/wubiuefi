@@ -32,7 +32,6 @@ import platform
 import re
 import tempfile
 import threading
-import lzma
 import py7zr
 
 from os.path import abspath, isfile, isdir
@@ -849,16 +848,28 @@ class Backend(object):
             import pycdlib
             iso = pycdlib.pycdlib.PyCdlib()
             iso.open(iso_path)
-            names = []
-            for dirname, dirlist, filelist in iso.walk(iso_path='/'):
-                for filename in filelist:
-                    clean = filename.split(';')[0].rstrip('.')
-                    path  = (dirname.rstrip('/') + '/' + clean).lstrip('/')
-                    names.append(os.path.normpath(path) if path else clean)
-            iso.close()
-            names.sort()
-            self.cache[iso_path] = names
-            return names
+
+            use_joliet = iso.has_joliet()
+            use_rr = iso.has_rock_ridge()
+            try:
+                names = []
+                if use_joliet:
+                    for dirname, dirlist, filelist in iso.walk(joliet_path='/'):
+                        for filename in filelist:
+                            clean = filename.split(';')[0].rstrip('.')
+                            path  = (dirname.rstrip('/') + '/' + clean).lstrip('/')
+                            names.append(os.path.normpath(path) if path else clean)
+                if use_rr:
+                    for dirname, dirlist, filelist in iso.walk(rr_path='/'):
+                        for filename in filelist:
+                            clean = filename.split(';')[0].rstrip('.')
+                            path  = (dirname.rstrip('/') + '/' + clean).lstrip('/')
+                            names.append(os.path.normpath(path) if path else clean)
+                names.sort()
+                self.cache[iso_path] = names
+                return names
+            finally:
+                iso.close()
         except Exception as err:
             log.exception(err)
             return []
@@ -880,12 +891,28 @@ class Backend(object):
             import pycdlib
             iso = pycdlib.pycdlib.PyCdlib()
             iso.open(iso_path)
-            iso_file_path = '/' + file_path.replace('\\', '/').lstrip('/')
-            os.makedirs(output_dir, exist_ok=True)
-            with open(output_file, 'wb') as f:
-                iso.get_file_from_iso_fp(f, iso_path=iso_file_path)
-            iso.close()
-            return output_file if isfile(output_file) else None
+            use_joliet = iso.has_joliet()
+            use_rr = iso.has_rock_ridge()
+            try:
+                iso_file_path = '/' + file_path.replace('\\', '/').lstrip('/')
+                os.makedirs(output_dir, exist_ok=True)
+                tried = []
+                for candidate in [iso_file_path, iso_file_path.upper(), iso_file_path.lower()]:
+                    try:
+                        with open(output_file, 'wb') as f:
+                            if use_joliet:
+                                iso.get_file_from_iso_fp(f, joliet_path=iso_file_path)
+                            if use_rr:
+                                iso.get_file_from_iso_fp(f, rr_path=iso_file_path)
+                            else:
+                                iso.get_file_from_iso_fp(f, iso_path=iso_file_path.upper())
+                            iso_file_path = candidate
+                            return output_file if isfile(output_file) else None
+                    except Exception as e:
+                        tried.append((candidate, str(e)))
+                
+            finally:
+                iso.close()
         except Exception as err:
             log.exception(err)
             return None
@@ -1077,8 +1104,9 @@ class Backend(object):
         bootdir = self.info.install_boot_dir
         if self.info.iso_path:
             log.debug("Extracting files from ISO %s" % self.info.iso_path)
-            self.extract_file_from_iso(
-                self.info.iso_path, self.info.distro.md5sums, output_dir=bootdir)
+            if self.info.distro.md5sums:
+                self.extract_file_from_iso(
+                    self.info.iso_path, self.info.distro.md5sums, output_dir=bootdir)
             self.extract_file_from_iso(
                 self.info.iso_path, self.info.distro.kernel, output_dir=bootdir)
             self.extract_file_from_iso(
@@ -1088,13 +1116,16 @@ class Backend(object):
 
         self.info.kernel = join_path(bootdir, os.path.basename(self.info.distro.kernel))
         self.info.initrd = join_path(bootdir, os.path.basename(self.info.distro.initrd))
-        md5sums          = join_path(bootdir, os.path.basename(self.info.distro.md5sums))
-        for file_path, rel_path in [
-            (self.info.kernel, self.info.distro.kernel),
-            (self.info.initrd, self.info.distro.initrd),
-        ]:
-            if not self.check_file(file_path, rel_path, md5sums):
-                raise Exception("File %s is corrupted" % file_path)
+        if self.info.distro.md5sums:
+            md5sums          = join_path(bootdir, os.path.basename(self.info.distro.md5sums))
+            for file_path, rel_path in [
+                (self.info.kernel, self.info.distro.kernel),
+                (self.info.initrd, self.info.distro.initrd),
+            ]:
+                if not self.check_file(file_path, rel_path, md5sums):
+                    raise Exception("File %s is corrupted" % file_path)
+        else:
+            log.debug("No md5sums provided for this distro, skipping integrity check")
 
     # ── Preseed / Autoinstall ─────────────────────────────────────────────────
 

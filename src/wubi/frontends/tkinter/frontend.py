@@ -75,7 +75,7 @@ class WindowsFrontend:
                     break
             self.root.update()
             self.root.after(16, lambda: None)
-            if hasattr(self, 'tasklist') and self.tasklist.status in (
+            if hasattr(self, 'tasklist') and self.tasklist is not None and self.tasklist.status in (
                 Task.COMPLETED, Task.FAILED, Task.CANCELLED
             ):
                 self.tasklist = None

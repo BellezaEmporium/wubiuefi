@@ -8,6 +8,7 @@ import logging
 import subprocess
 import shutil
 import requests
+import gnupg
 
 log = logging.getLogger("iso_verifier")
 
@@ -69,7 +70,7 @@ def sha256_file(path, associated_task=None):
 # --------------------------------------------------
 
 def gpg_available():
-    return shutil.which("gpg") is not None
+    return gnupg.GPG().version is not None
 
 
 def ensure_ubuntu_keys():
@@ -102,13 +103,8 @@ def verify_gpg(sig_file, data_file):
     ensure_ubuntu_keys()
 
     try:
-        result = subprocess.run(
-            ["gpg", "--verify", sig_file, data_file],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-
+        result = gnupg.GPG().verify_data(data_file, sig_file)
+        
         if result.returncode == 0:
             log.info("GPG signature OK")
             return True

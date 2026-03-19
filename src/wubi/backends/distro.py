@@ -41,6 +41,7 @@ class Distro(object):
         info_file, arch, packages, size, files_to_check,
         backend, ordering, website, support, min_disk_space_mb,
         min_memory_mb, installation_dir,
+        md5sums=None,
         iso_url=None,
         releases_url=None,
         diskimage=None, diskimage2=None,
@@ -67,6 +68,7 @@ class Distro(object):
         self.diskimage2 = diskimage2
         self.iso_url = iso_url
         self.releases_url = releases_url
+        self.md5sums = os.path.normpath(md5sums) if md5sums else None
         if isinstance(files_to_check, str):
             files_to_check = [
                 os.path.normpath(f.strip().lower())
@@ -162,6 +164,8 @@ class Distro(object):
             self.kernel,
             self.initrd,
             self.info_file]
+        if self.md5sums:
+            required_files.append(self.md5sums)
         return required_files
 
     def check_info(self, info, check_arch):

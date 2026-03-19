@@ -8,6 +8,7 @@ pywin32
 passlib
 pycdlib
 py7zr
+python-gnupg
 
 # Theming
 ttkbootstrap
