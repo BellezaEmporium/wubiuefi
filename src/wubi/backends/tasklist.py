@@ -176,9 +176,28 @@ class Task(object):
             (self.parent is None or self.parent.is_active())
 
     def __call__(self, *args, **kargs):
-        if self.status is not Task.INACTIVE \
-        or self.parent and not self.parent.is_active():
-            return
+        log.debug("CALLING: %s args=%s kargs=%s" % (
+            self.name, self.associated_function_args, 
+            list(self.associated_function_kargs.keys())))
+        try:
+            result = self.associated_function(
+                *self.associated_function_args,
+                **self.associated_function_kargs)
+            log.debug("RETURNED: %s result=%s" % (self.name, result))
+        except Exception as err:
+            log.debug("RAISED: %s — %s" % (self.name, err))
+            self.error = sys.exc_info()
+            self.status = Task.FAILED
+            log.exception(err)
+            if self.is_required:
+                root = self.get_root()
+                root.error = self.error
+                root.cancel()
+                return
+            else:
+                message = "Non fatal error %s in task %s" % (err, self.name)
+                log.error(message)
+                self._notify_listeners(message)
         message = "Running %s..." % self.name
         self.log(message)
         self.error = None
@@ -198,19 +217,15 @@ class Task(object):
             except Exception as err:
                 self.error = sys.exc_info()
                 self.status = Task.FAILED
-                log.exception(err)
+                log.exception("TASK FAILED: %s — %s" % (self.name, err))  # ← ajouter
                 if self.is_required:
                     root = self.get_root()
                     root.error = self.error
                     root.cancel()
                     return
-                else:
-                    message = "Non fatal error %s in task %s" % (err, self.name)
-                    log.error(message)
-                    self._notify_listeners(message)
             self.associated_function_result = result
-        self._run_subtasks()
-        self.finish()
+            self._run_subtasks()
+            self.finish()
         return self.associated_function_result
 
     def get_root(self):
@@ -336,9 +351,13 @@ class Task(object):
             self.parent._notify_listeners(message, task)
 
     def _run_subtasks(self):
+        print("_run_subtasks called count=%d" % len(self.subtasks), flush=True)
+        log.debug("_run_subtasks called count=%d" % len(self.subtasks))
         for subtask in self.subtasks:
             self.current_subtask = subtask
+            log.debug(">>> SUBTASK START: %s" % subtask.name)
             subtask()
+            log.debug(">>> SUBTASK END: %s" % subtask.name)
 
     def _get_completed(self):
         '''

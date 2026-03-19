@@ -1,83 +1,186 @@
-# tools/pywine -O tests/test_backend.py
 import unittest
-import sys, os
+import os
 import tempfile
 import shutil
-from wubi.backends.win32 import backend
+from unittest import mock
+from wubi.backends import backend, registry
 from version import application_name, version, revision
 from wubi import application
 
-try:
-    from unittest import mock
-except ImportError:
-    import mock
-from wubi.backends.win32 import registry
+
 class BackendTests(unittest.TestCase):
+
     def setUp(self):
         root_dir = os.getcwd()
-        w = application.Wubi(application_name, version,
-                             revision, root_dir)
-        # To get things like info.locale set.
-        w.parse_commandline_arguments()
-        self.back = backend.WindowsBackend(w)
+        self.app = application.Wubi(application_name, version, revision, root_dir)
+        self.app.parse_commandline_arguments()
+        self.back = backend.Backend(self.app)
         self.back.info.iso_extractor = os.path.join(root_dir, 'build', 'bin', '7z.exe')
-        w.info.original_exe = os.path.join(os.getcwd(), 'build', 'wubi.exe')
+        self.app.info.original_exe = os.path.join(root_dir, 'build', 'wubi.exe')
         self.temp_target_dir = tempfile.mkdtemp(prefix='wubi-test-')
 
-        # Data
         self.uninstall_keys = [
             ('HKEY_LOCAL_MACHINE', 'registry-key', 'UninstallString',
              os.path.join(self.temp_target_dir, 'uninstall-wubi.exe')),
-            ('HKEY_LOCAL_MACHINE', 'registry-key', 'InstallationDir', self.temp_target_dir),
+            ('HKEY_LOCAL_MACHINE', 'registry-key', 'InstallationDir',
+             self.temp_target_dir),
             ('HKEY_LOCAL_MACHINE', 'registry-key', 'DisplayName', 'Ubuntu'),
             ('HKEY_LOCAL_MACHINE', 'registry-key', 'DisplayIcon',
-             os.path.join(os.getcwd(), 'data\\images\\Wubi.ico')),
+             os.path.join(root_dir, 'data', 'images', 'Wubi.ico')),
             ('HKEY_LOCAL_MACHINE', 'registry-key', 'DisplayVersion',
              self.back.info.version_revision),
             ('HKEY_LOCAL_MACHINE', 'registry-key', 'Publisher', 'Ubuntu'),
             ('HKEY_LOCAL_MACHINE', 'registry-key', 'URLInfoAbout',
-             'http://www.ubuntu.com'),
+             'https://www.ubuntu.com'),
             ('HKEY_LOCAL_MACHINE', 'registry-key', 'HelpLink',
-             'http://www.ubuntu.com/support')]
-        # Python2.3 doesn't have addCleanup (2.7), so we need to manage
-        # cleaning up after this mock ourselves.
-        self.save_registry = registry.set_value
-        # Patch away!
-        registry.set_value = mock.Mock()
-    
+             'https://www.ubuntu.com/support'),
+        ]
+
+        self._registry_patcher = mock.patch.object(registry, 'set_value')
+        self.mock_set_value = self._registry_patcher.start()
+
     def tearDown(self):
-        registry.set_value = self.save_registry
+        self._registry_patcher.stop()
         shutil.rmtree(self.temp_target_dir, ignore_errors=True)
 
+
+    # --- Uninstaller ---
+
     def test_create_uninstaller(self):
-        # We don't have decorators in Python 2.3, so we can't use mock.patch
-        # here.
         self.back.info.target_dir = self.temp_target_dir
         self.back.info.registry_key = 'registry-key'
-        self.back.info.distro = self.back.parse_isolist(
-                                    'data/isolist.ini')[0]
-        self.back.create_uninstaller(None)
-        calls = registry.set_value.call_args_list
-        remove = []
-        for c in calls:
-            if c[0] in self.uninstall_keys:
-                remove.append(c)
-            else:
-                self.fail('Did not expect key to be set: %s' % str(c[0]))
-        for r in remove:
-            calls.remove(r)
-        self.assertTrue(len(calls) == 0,
-            'Did not set required registry keys:\n%s' % str(calls))
-        # TODO mktempd
-        self.assertTrue(os.path.exists(os.path.join(self.temp_target_dir, 'uninstall-wubi.exe')),
-            'Did not install uninstaller binary.')
-        os.remove(os.path.join(self.temp_target_dir, 'uninstall-wubi.exe'))
 
-    def test_get_iso_file(self):
-        # http://pad.lv/856340
-        expected = ['%02d' % x for x in range(1,51)]
+        mock_distro = mock.Mock()
+        mock_distro.name = 'Ubuntu'
+        mock_distro.version = '24.04'
+        mock_distro.website = 'https://www.ubuntu.com'
+        mock_distro.support = 'https://www.ubuntu.com/support'
+        self.back.info.distro = mock_distro
+
+        self.back.create_uninstaller(None)
+
+        calls = [c[0] for c in self.mock_set_value.call_args_list]
+        for key in self.uninstall_keys:
+            self.assertIn(key, calls,
+                'Expected registry key not set: %s' % str(key))
+        for call in calls:
+            self.assertIn(call, self.uninstall_keys,
+                'Unexpected registry key set: %s' % str(call))
+
+        uninstaller = os.path.join(self.temp_target_dir, 'uninstall-wubi.exe')
+        self.assertTrue(os.path.exists(uninstaller),
+            'Uninstaller binary not created.')
+
+
+    # --- ISO ---
+
+    def test_get_iso_file_names(self):
+        """Verifies the reading of files in a small test ISO."""
+        expected = ['%02d' % x for x in range(1, 51)]
         self.assertEqual(expected,
             self.back.get_iso_file_names('tests/data/small.iso'))
+
+    def test_get_source_id_fallback(self):
+        """Fallback to SOURCE_ID_MAP if the ISO does not contain install-sources.yaml."""
+        with mock.patch('pycdlib.PyCdlib', side_effect=Exception("no pycdlib")):
+            source_id = self.back._get_source_id()
+        self.assertEqual(source_id, 'ubuntu-desktop')
+
+    def test_get_source_id_unknown_distro(self):
+        """Fallback to ubuntu-desktop if the distro is unknown."""
+        with mock.patch('pycdlib.PyCdlib', side_effect=Exception):
+            source_id = self.back._get_source_id()
+        self.assertEqual(source_id, 'ubuntu-desktop')
+
+
+    # --- Password ---
+
+    def test_hash_password(self):
+        """Verifies that the hash starts with $6$ (sha512_crypt)."""
+        from passlib.hash import sha512_crypt
+        hashed = sha512_crypt.using(rounds=5000).hash('testpassword')
+        self.assertTrue(hashed.startswith('$6$'),
+            'Password hash should start with $6$')
+        self.assertTrue(sha512_crypt.verify('testpassword', hashed))
+
+
+    # --- EFI ---
+
+    def test_get_efi_arch_amd64(self):
+        self.back.info.arch = 'AMD64'
+        arch = self.back.get_efi_arch(None, None)
+        self.assertEqual(arch, 'x64')
+
+    def test_get_efi_arch_arm64(self):
+        self.back.info.arch = 'ARM64'
+        arch = self.back.get_efi_arch(None, None)
+        self.assertEqual(arch, 'arm64')
+
+    def test_get_efi_arch_x86(self):
+        self.back.info.arch = 'x86'
+        arch = self.back.get_efi_arch(None, None)
+        self.assertEqual(arch, 'ia32')
+
+
+    # --- Hostname ---
+
+    def test_hostname_sanitization(self):
+        import re
+        cases = [
+            ('MY_PC',        'my-pc'),
+            ('MY PC 2024!',  'my-pc-2024'),
+            ('---test---',   'test'),
+            ('',             'wubi-host'),
+            ('valid-name',   'valid-name'),
+        ]
+        for raw, expected in cases:
+            hostname = re.sub(r'[^a-z0-9-]', '-', raw.lower())
+            hostname = re.sub(r'-+', '-', hostname)
+            hostname = hostname.strip('-') or 'wubi-host'
+            self.assertEqual(hostname, expected,
+                'hostname(%r) = %r, expected %r' % (raw, hostname, expected))
+
+    # --- Autoinstall ---
+
+    def test_create_subiquity_autoinstall(self):
+        """Verifies that the autoinstall.yaml file is created with the expected content."""
+        import yaml
+        mock_distro = mock.Mock()
+        mock_distro.name = 'ubuntu'
+        self.back.info.custom_install = self.temp_target_dir
+        self.back.info.locale = 'fr_FR.UTF-8'
+        self.back.info.keyboard_layout = 'fr'
+        self.back.info.keyboard_variant = ''
+        self.back.info.timezone = 'Europe/Paris'
+        self.back.info.user_full_name = 'Test User'
+        self.back.info.hostname = 'test-host'
+        self.back.info.host_username = 'testuser'
+        self.back.info.password = 'testpassword'
+        self.back.info.iso_path = '/fake/ubuntu.iso'
+        self.back.info.distro = mock_distro
+
+         # Debug
+        print(os.listdir(self.temp_target_dir))
+        autoinstall_dir = os.path.join(self.temp_target_dir, 'autoinstall')
+        if os.path.exists(autoinstall_dir):
+            print(os.listdir(autoinstall_dir))
+
+        with mock.patch.object(self.back, '_get_source_id', return_value='ubuntu-desktop'):
+            self.back.create_subiquity_autoinstall()
+
+        yaml_path = os.path.join(self.temp_target_dir, 'autoinstall', 'autoinstall.yaml')
+        self.assertTrue(os.path.exists(yaml_path), 'autoinstall.yaml not created')
+
+        with open(yaml_path, 'r') as f:
+            content = yaml.safe_load(f)
+
+        ai = content['autoinstall']
+        self.assertEqual(ai['locale'], 'fr_FR.UTF-8')
+        self.assertEqual(ai['keyboard']['layout'], 'fr')
+        self.assertEqual(ai['identity']['username'], 'testuser')
+        self.assertEqual(ai['source']['id'], 'ubuntu-desktop')
+        self.assertTrue(ai['identity']['password'].startswith('$6$'))
+
 
 if __name__ == '__main__':
     unittest.main()

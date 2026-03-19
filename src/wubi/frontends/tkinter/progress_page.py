@@ -2,7 +2,7 @@ import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from gettext import gettext as _
 
-from wubi.backends.common.tasklist import Task
+from wubi.backends.tasklist import Task
 from .page import Page
 import logging
 
@@ -44,6 +44,7 @@ class ProgressPage(Page):
 
     def on_progress(self, task, message=None):
         """Callback appelé depuis le thread des tâches — doit passer par after()."""
+        self.frontend._ui_queue.put(task)
         self.frontend.root.after(0, self._update, task)
 
     def _update(self, task):

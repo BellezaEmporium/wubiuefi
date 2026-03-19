@@ -77,7 +77,7 @@ def download(url, filename=None, associated_task=None, web_proxy=None):
         url,
         proxies=proxies,
         stream=True,
-        timeout=(10, 300)
+        timeout=(5, 30)
     )
     response.raise_for_status()
 

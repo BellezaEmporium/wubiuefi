@@ -13,6 +13,8 @@ autoinstall:
 
   timezone: $(timezone)
 
+  updates: no
+
   identity:
     realname: $(realname)
     hostname: $(hostname)
@@ -29,7 +31,10 @@ autoinstall:
   storage:
     layout:
       name: direct
-      ptable: msdos
+      ptable: gpt
+
+  drivers:
+    install: true
 
   apt:
     geoip: true
@@ -42,5 +47,7 @@ autoinstall:
   error-commands:
     - tar -czf /installer-logs.tar.gz /var/log/installer/
 
+  shutdown: reboot
+
   early-commands:
-  - /cdrom/ubuntu/install/custom-installation/hooks/early-command.sh /ubuntu/install/custom-installation
+    - ["/bin/sh", "/cdrom/ubuntu/install/custom-installation/hooks/early-command.sh", "/ubuntu/install/custom-installation"]

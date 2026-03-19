@@ -18,6 +18,7 @@ build: wubi
 
 wubi: wubi-pre-build
 	$(PYTHON_WIN) -m PyInstaller --noconfirm wubi.spec
+	mv dist/${PACKAGE}.exe build/${PACKAGE}.exe
 
 wubizip: wubi-pre-build
 	sh -c 'PYTHONPATH=src pypack --verbose --outputdir=build/wubi src/main.py data build/bin build/version.py build/winboot build/translations'

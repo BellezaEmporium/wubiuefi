@@ -3,7 +3,7 @@ import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from gettext import gettext as _
 from .page import Page
-from wubi.backends.common.mappings import (
+from wubi.backends.mappings import (
     reserved_usernames,
     lang_country2linux_locale,
     language2lang_country,
@@ -27,7 +27,7 @@ class InstallationPage(Page):
         form = ttk.Frame(self)
         form.pack(fill=BOTH, expand=YES, padx=24, pady=4)
 
-        # Colonne gauche
+        # Left column
         ttk.Label(form, text=_("Installation drive:"), anchor="w").grid(row=0, column=0, sticky="w")
         self._drive_var = ttk.StringVar()
         self.target_drive_list = ttk.Combobox(form, textvariable=self._drive_var, state="readonly", width=22)
@@ -46,7 +46,7 @@ class InstallationPage(Page):
         self.distro_list.grid(row=5, column=0, sticky="w", pady=(0, 4))
         self.distro_list.bind("<<ComboboxSelected>>", lambda e: self.on_distro_change())
 
-        # Colonne droite
+        # Right column
         ttk.Label(form, text=_("Language:"), anchor="w").grid(row=0, column=1, sticky="w", padx=(20, 0))
         self._lang_var = ttk.StringVar()
         self.language_list = ttk.Combobox(form, textvariable=self._lang_var, state="readonly", width=22)
@@ -186,7 +186,7 @@ class InstallationPage(Page):
         pw1 = self._pw1_var.get()
         pw2 = self._pw2_var.get()
         language = language2lang_country.get(self._lang_var.get())
-        locale = lang_country2linux_locale.get(language, self.info.locale)
+        locale = lang_country2linux_locale.get(language) or self.info.locale
 
         error = ""
         if not drive:

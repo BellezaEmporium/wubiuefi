@@ -18,6 +18,9 @@ hiddenimports = (
         'bitarray',
         'bitarray._bitarray',
         'fastbencode',
+        'passlib',
+        'passlib.hash',
+        'passlib.handlers.sha2_crypt'
     ]
 )
 

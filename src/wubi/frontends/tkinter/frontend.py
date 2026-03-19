@@ -5,6 +5,7 @@ import logging
 import gettext
 _ = gettext.gettext
 import threading
+import queue
 
 log = logging.getLogger("WindowsFrontend")
 
@@ -13,7 +14,7 @@ class WindowsFrontend:
         info = application.info
         t = gettext.translation(
             info.application_name,
-            localedir=info.locale_dir,
+            localedir=info.translations_dir,
             languages=[info.language],
             fallback=True
         )
@@ -29,6 +30,7 @@ class WindowsFrontend:
         )
         self.root.protocol("WM_DELETE_WINDOW", self.cancel)
         self._page_done = threading.Event()
+        self._ui_queue  = queue.Queue()
 
     def run(self):
         self.root.mainloop()
@@ -52,7 +54,7 @@ class WindowsFrontend:
         self.root.quit() 
 
     def show_page(self, page):
-        if self.current_page is page:
+        if self.current_page and self.current_page is page:
             self.current_page.show()
             return
         if self.current_page:
@@ -61,11 +63,24 @@ class WindowsFrontend:
         page.show()
 
     def _wait_for_page(self):
+        from wubi.backends.tasklist import Task
         self._page_done.clear()
         while not self._page_done.is_set():
+            while True:
+                try:
+                    task = self._ui_queue.get_nowait()
+                    if self.current_page and hasattr(self.current_page, '_update'):
+                        self.current_page._update(task)
+                except queue.Empty:
+                    break
             self.root.update()
-            self.root.after(50, lambda: None)
-            self._page_done.wait(0.05)
+            self.root.after(16, lambda: None)
+            if hasattr(self, 'tasklist') and self.tasklist.status in (
+                Task.COMPLETED, Task.FAILED, Task.CANCELLED
+            ):
+                if hasattr(self, 'tasklist') and self.tasklist.current_subtask:
+                    log.debug("Current subtask: %s" % self.tasklist.current_subtask.name)
+                self.stop()
 
     def show_installer_page(self):
         from .installation_page import InstallationPage
@@ -131,11 +146,25 @@ class WindowsFrontend:
         return messagebox.askretrycancel(str(title), str(message), parent=self.root)
 
     def run_tasks(self, tasklist):
+        log.debug("run_tasks id=%d subtasks=%d" % (id(tasklist), len(tasklist.subtasks)))
         from .progress_page import ProgressPage
+        from wubi.backends.tasklist import Task
         self.progress_page = ProgressPage(self.root, self)
-        tasklist.callback = self.progress_page.on_progress
+        
+        def debug_callback(task, message=None):
+            log.debug("TASK status=%s name=%s desc=%s error=%s root_error=%s" % (
+                task.status,
+                task.name,
+                task.description,
+                task.error,
+                task.get_root().error
+            ))
+            self.progress_page.on_progress(task, message)
+        
+        tasklist.callback = debug_callback
         self.tasklist = tasklist
         tasklist.start()
+        log.debug("after start id=%d subtasks=%d" % (id(tasklist), len(tasklist.subtasks)))
         self.show_page(self.progress_page)
         self.root.update()
         self._wait_for_page()

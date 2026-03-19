@@ -8,7 +8,7 @@ from argparse import ArgumentParser
 from gettext import gettext as _
 
 from wubi import errors
-from wubi.backends.common.utils import run_command
+from wubi.backends.utils import run_command
 from wubi.errors import QuitException
 from version import application_name, version, revision
 
@@ -130,6 +130,7 @@ class Info(object):
         self.arch = None
         self.check_arch = False
         self.encoding = None
+        self.efi = False
         self.environment_variables = {}
         self.iso_md5_hashes = {}
 
@@ -300,8 +301,8 @@ class Wubi(object):
     # ── Factory backend / frontend ───────────────
 
     def get_backend(self):
-        from wubi.backends.win32 import WindowsBackend
-        return WindowsBackend(self)
+        from wubi.backends import Backend
+        return Backend(self)
 
     def get_frontend(self):
         if self.frontend:
@@ -357,7 +358,14 @@ class Wubi(object):
             raise errors.QuitException()
         log.info("Settings received")
         if self.backend:
-            fe.run_tasks(self.backend.get_installation_tasklist())
+            log.debug("target_drive=%s" % self.info.target_drive)
+            log.debug("distro=%s" % self.info.distro)
+            log.debug("installation_size_mb=%s" % self.info.installation_size_mb)
+            tasklist = self.backend.get_installation_tasklist()
+            log.debug("TASKLIST subtasks count=%d" % len(tasklist.subtasks))
+            for t in tasklist.subtasks:
+                log.debug("  - %s" % t.name)
+            fe.run_tasks(tasklist)
         log.info("Almost finished installing")
         if not self.info.non_interactive:
             fe.show_installation_finish_page()

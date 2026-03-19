@@ -42,5 +42,5 @@ class CDMenuPage(Page):
         elif choice == "cdboot":
             self.frontend.show_cdboot_page()
         else:
-            self.info.show_info()
+            self.frontend.app.show_info()
             self.frontend.stop()

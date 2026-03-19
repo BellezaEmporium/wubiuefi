@@ -38,7 +38,7 @@ class Distro(object):
 
     def __init__(
         self, name, version, kernel, initrd,
-        info_file, arch, packages, size, md5sums, files_to_check,
+        info_file, arch, packages, size, files_to_check,
         backend, ordering, website, support, min_disk_space_mb,
         min_memory_mb, installation_dir,
         iso_url=None,
@@ -51,7 +51,6 @@ class Distro(object):
         self.arch = arch
         self.kernel = os.path.normpath(kernel)
         self.initrd = os.path.normpath(initrd)
-        self.md5sums = os.path.normpath(md5sums)
         self.info_file = os.path.normpath(info_file)
         self.size = size and int(size) or 0
         self.min_iso_size = min_iso_size and int(min_iso_size) or 0
@@ -162,8 +161,7 @@ class Distro(object):
         required_files += [
             self.kernel,
             self.initrd,
-            self.info_file,
-            self.md5sums,]
+            self.info_file]
         return required_files
 
     def check_info(self, info, check_arch):

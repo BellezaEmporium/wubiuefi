@@ -5,6 +5,9 @@ requests
 aiotorrent
 PGPy13
 pywin32
+passlib
+pycdlib
+py7zr
 
 # Theming
 ttkbootstrap

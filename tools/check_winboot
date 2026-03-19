@@ -1,106 +1,61 @@
 #!/bin/sh
+set -e
 
-shim_signed_url="http://archive.ubuntu.com/ubuntu/pool/main/s/shim-signed/shim-signed_1.59+15.8-0ubuntu2_amd64.deb"
-shim_url="http://archive.ubuntu.com/ubuntu/pool/main/s/shim/shim_15.8-0ubuntu2_amd64.deb"
-shim_blacklist_md5="a1fe8e36277b45ceeeabc5ce38df57bd"
+# --- Dépendances ---
+install_pkg() {
+    if command -v apt-get > /dev/null 2>&1; then
+        apt-get install -y "$@"
+    elif command -v dnf > /dev/null 2>&1; then
+        dnf install -y "$@"
+    elif command -v pacman > /dev/null 2>&1; then
+        pacman -S --noconfirm "$@"
+    else
+        echo "Error: No supported package manager found"; exit 1
+    fi
+}
 
-# Détecter le gestionnaire de paquets dans WSL
-if command -v apt > /dev/null 2>&1; then
-    PKG_INSTALL="apt install -y"
-elif command -v apt-get > /dev/null 2>&1; then
-    PKG_INSTALL="apt-get install -y"
-elif command -v dnf > /dev/null 2>&1; then
-    PKG_INSTALL="dnf install -y"
-elif command -v pacman > /dev/null 2>&1; then
-    PKG_INSTALL="pacman -S --noconfirm"
-else
-    echo "Error: No supported package manager found"
-    exit 1
-fi
-
-test -e /usr/lib/grub/i386-pc/moddep.lst || {
-    echo "Installing grub-pc-bin"
-    $PKG_INSTALL grub-pc-bin
-}
-test -e /usr/lib/grub/x86_64-efi/moddep.lst || {
-    echo "Installing grub-efi-amd64-bin"
-    $PKG_INSTALL grub-efi-amd64-bin
-}
-test -e /usr/lib/grub/i386-efi/moddep.lst || {
-    echo "Installing grub-efi-ia32-bin"
-    $PKG_INSTALL grub-efi-ia32-bin
-}
-test -e /usr/lib/shim/shim.efi.signed -o -e /usr/lib/shim/shimx64.efi.signed || {
-    echo "Installing shim-signed..."
-    $PKG_INSTALL shim-signed
-}
-test -e /usr/bin/sbsign || {
-    echo "Installing sbsigntool..."
-    $PKG_INSTALL sbsigntool
-}
-test -e /usr/bin/openssl || {
-    echo "Installing openssl..."
-    $PKG_INSTALL openssl
-}
-test -e .key || {
-    echo "Generating new Secure Boot key..."
-    mkdir -p .key
-    USER=$(whoami)
-    openssl req -new -x509 -newkey rsa:2048 \
-        -keyout ".key/${USER}_wubi.key" \
-        -out ".key/${USER}_wubi.crt" \
-        -nodes -days 3650 -subj "/CN=${USER} Wubi/"
-    openssl x509 -in ".key/${USER}_wubi.crt" \
-        -out ".key/${USER}_wubi.cer" -outform DER
-}
+test -e /usr/lib/grub/i386-pc/moddep.lst    || install_pkg grub-pc-bin
+test -e /usr/lib/grub/x86_64-efi/moddep.lst || install_pkg grub-efi-amd64-bin
+test -e /usr/lib/grub/i386-efi/moddep.lst   || install_pkg grub-efi-ia32-bin
+test -e /usr/lib/shim/shimx64.efi.signed \
+    -o -e /usr/lib/shim/shim.efi.signed     || install_pkg shim-signed
 
 WINBOOT_EFI="build/winboot/EFI"
 mkdir -p "$WINBOOT_EFI"
 
-SHIM_SRC=""
+# --- Shim ---
 for candidate in \
     /usr/lib/shim/shimx64.efi.signed \
     /usr/lib/shim/shim.efi.signed \
     /usr/lib/shim-signed/shim/shimx64.efi.signed; do
     if [ -e "$candidate" ]; then
-        SHIM_SRC="$candidate"
+        cp "$candidate" "$WINBOOT_EFI/shimx64.efi"
+        echo "Copied shimx64.efi from $candidate"
         break
     fi
 done
 
-if [ -z "$SHIM_SRC" ]; then
-    echo "Error: shimx64.efi.signed introuvable"
-    exit 1
+[ -e "$WINBOOT_EFI/shimx64.efi" ] || { echo "Error: shim introuvable"; exit 1; }
+
+GRUB_MODULES="part_gpt part_msdos fat ntfs ext2 loopback \
+    linux boot search search_fs_uuid configfile \
+    normal echo test sleep gfxterm font"
+
+# --- x86_64 ---
+grub-mkimage -O x86_64-efi -p "/EFI/wubildr" \
+    -o "$WINBOOT_EFI/grubx64.efi" $GRUB_MODULES
+echo "Built grubx64.efi"
+
+# --- ia32 ---
+grub-mkimage -O i386-efi -p "/EFI/wubildr" \
+    -o "$WINBOOT_EFI/grubia32.efi" $GRUB_MODULES
+echo "Built grubia32.efi"
+
+# --- arm64 (si disponible) ---
+if [ -e /usr/lib/grub/arm64-efi/moddep.lst ]; then
+    grub-mkimage -O arm64-efi -p "/EFI/wubildr" \
+        -o "$WINBOOT_EFI/grubaa64.efi" $GRUB_MODULES
+    echo "Built grubaa64.efi"
 fi
-cp "$SHIM_SRC" "$WINBOOT_EFI/shimx64.efi"
-echo "Copied shimx64.efi"
-
-USER=$(whoami)
-KEY=".key/${USER}_wubi.key"
-CRT=".key/${USER}_wubi.crt"
-
-grub-mkimage -O x86_64-efi \
-    -p "/EFI/wubildr" \
-    -o "$WINBOOT_EFI/grubx64.efi.unsigned" \
-    part_gpt part_msdos fat ntfs ext2 loopback \
-    linux boot search search_fs_uuid configfile \
-    normal echo test sleep gfxterm font
-
-sbsign --key "$KEY" --cert "$CRT" \
-    --output "$WINBOOT_EFI/grubx64.efi" \
-    "$WINBOOT_EFI/grubx64.efi.unsigned"
-rm -f "$WINBOOT_EFI/grubx64.efi.unsigned"
-
-grub-mkimage -O i386-efi \
-    -p "/EFI/wubildr" \
-    -o "$WINBOOT_EFI/grubia32.efi.unsigned" \
-    part_gpt part_msdos fat ntfs ext2 loopback \
-    linux boot search search_fs_uuid configfile \
-    normal echo test sleep gfxterm font
-
-sbsign --key "$KEY" --cert "$CRT" \
-    --output "$WINBOOT_EFI/grubia32.efi" \
-    "$WINBOOT_EFI/grubia32.efi.unsigned"
-rm -f "$WINBOOT_EFI/grubia32.efi.unsigned"
 
 echo "EFI binaries ready in $WINBOOT_EFI"

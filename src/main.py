@@ -3,16 +3,18 @@ import sys
 import os
 import platform
 import shutil, tempfile
+import atexit
 
 def get_base_path():
     if hasattr(sys, '_MEIPASS'):
         tmp = tempfile.mkdtemp(prefix="wubi_")
-        shutil.copytree(os.path.join(sys._MEIPASS, 'winboot'),
-                        os.path.join(tmp, 'winboot'))
-        root_dir = tmp
-    else:
-        root_dir = os.path.abspath(os.path.dirname(__file__))
-    return root_dir
+        for folder in ('winboot', 'data', 'translations', 'bin'):
+            src = os.path.join(sys._MEIPASS, folder)
+            if os.path.isdir(src):
+                shutil.copytree(src, os.path.join(tmp, folder))
+        atexit.register(shutil.rmtree, tmp, True)
+        return tmp
+    return os.path.abspath(os.path.dirname(__file__))
 
 
 root_dir = get_base_path()

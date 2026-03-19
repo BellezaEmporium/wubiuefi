@@ -23,7 +23,6 @@ import os
 import hashlib
 import subprocess
 import shutil
-import random
 import ctypes
 import logging
 
@@ -51,14 +50,22 @@ def spawn_command(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                stdout=stdout, startupinfo=startupinfo,
                                shell=False)
 
+def md5_password(password):
+    """Produces an MD5 hash of the given password."""
+    return hashlib.md5(password.encode('utf-8')).hexdigest()
+
 def run_command(command, show_window=False):
     '''
     return stdout on success or raise error
     '''
     process = spawn_command(command, show_window=show_window)
-    if process and process.stdin and process.stdout and process.stderr:
+    output = b""
+    errormsg = b""
+    if process.stdin:
         process.stdin.close()
+    if process.stdout:
         output = process.stdout.read()
+    if process.stderr:
         errormsg = process.stderr.read()
     retval = process.wait()
     if retval == 0:
@@ -66,7 +73,8 @@ def run_command(command, show_window=False):
     else:
         raise Exception(
             "Error executing command\n>>command=%s\n>>retval=%s\n>>stderr=%s\n>>stdout=%s"
-            % (" ".join(command), retval, output, errormsg))
+            % (" ".join(str(c) for c in command), retval, errormsg, output)
+        )
 
 def run_nonblocking_command(command, show_window=False):
     '''
@@ -75,103 +83,46 @@ def run_nonblocking_command(command, show_window=False):
     process = spawn_command(command, show_window)
     return process.pid
 
-def md5_password(password):
-    if isinstance(password, str):
-        password = password.encode('utf-8')
-    salt_chars = './abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-    salt = ''.join([random.choice(salt_chars) for i in range(5)])
-    salt_bytes = salt.encode('utf-8')  # ← garder les bytes pour les hashlib.update()
-
-    hash = hashlib.md5()
-    hash.update(password)
-    hash.update(b'$1$')
-    hash.update(salt_bytes)
-
-    second_hash = hashlib.md5()
-    second_hash.update(password)
-    second_hash.update(salt_bytes)
-    second_hash.update(password)
-    second_hash_digest = second_hash.digest()
-    q, r = divmod(len(password), len(second_hash_digest))
-    second_hash_digest = second_hash_digest*q + second_hash_digest[:r]
-    assert len(second_hash_digest) == len(password)
-    hash.update(second_hash_digest)
-    del second_hash, q, r
-
-    i = len(password)
-    while i > 0:
-        if i & 1:
-            hash.update(b'\0')
-        else:
-            hash.update(password[0:1])
-        i >>= 1
-
-    hash = hash.digest()
-
-    for i in range(1000):
-        nth_hash = hashlib.md5()
-        if i % 2:
-            nth_hash.update(password)
-        else:
-            nth_hash.update(hash)
-        if i % 3:
-            nth_hash.update(salt_bytes)
-        if i % 7:
-            nth_hash.update(password)
-        if i % 2:
-            nth_hash.update(hash)
-        else:
-            nth_hash.update(password)
-        hash = nth_hash.digest()
-
-    # a different base64 than the MIME one
-    base64 = './0123456789' \
-        'ABCDEFGHIJKLMNOPQRSTUVWXYZ' \
-        'abcdefghijklmnopqrstuvwxyz'
-    def b64_three_char(char2, char1, char0, n):
-        byte2, byte1, byte0 = (c if isinstance(c, int) else ord(c) for c in [char2, char1, char0])
-        w = (byte2 << 16) | (byte1 << 8) | byte0
-        s = []
-        for _ in range(n):
-            s.append(base64[w & 0x3f])
-            w >>= 6
-        return s
-
-    result = ['$1$', salt, '$']
-    result.extend(b64_three_char(hash[0], hash[6], hash[12], 4))
-    result.extend(b64_three_char(hash[1], hash[7], hash[13], 4))
-    result.extend(b64_three_char(hash[2], hash[8], hash[14], 4))
-    result.extend(b64_three_char(hash[3], hash[9], hash[15], 4))
-    result.extend(b64_three_char(hash[4], hash[10], hash[5], 4))
-    result.extend(b64_three_char('\0', '\0', hash[11], 2))
-
-    return ''.join(result)
+def hash_password(password: str) -> str:
+    """
+    Produces a hashed password using SHA-512-crypt. 
+    It tries to use passlib or crypt if available, and falls back to a pure Python implementation if necessary.
+    """
+    try:
+        from passlib.hash import sha512_crypt
+        return sha512_crypt.hash(password)
+    except ImportError:
+        pass
+    try:
+        import crypt # type: ignore
+        return crypt.crypt(password, crypt.mksalt(crypt.METHOD_SHA512))
+    except (ImportError, AttributeError):
+        pass
+    # Python < 3.13 fallback implementation
+    return _sha512_crypt_pure(password)  # type: ignore
 
 def get_file_hash(file_path, hash_name='md5', associated_task=None):
     if not file_path or not os.path.isfile(file_path):
         return
-    file_size = os.path.getsize(file_path)/(1024**2)
+    file_size_mb = os.path.getsize(file_path) / (1024 ** 2)
     if associated_task:
         associated_task.unit = "MB"
-        associated_task.size = file_size
-    file = open(file_path, "rb")
-    hash = hashlib.new(hash_name)
-    data_read = 0
-    for i in range(int(file_size) + 1):
-        data = file.read(1024**2)
-        data_read += 1
-        if data == "":
-            break
-        if associated_task:
-            if associated_task.set_progress(data_read):
-                file.close()
-                return
-        hash.update(data)
-    file.close()
-    hash = hash.hexdigest()
+        associated_task.size = file_size_mb
+    h = hashlib.new(hash_name)
+    bytes_read = 0
+    with open(file_path, "rb") as f:
+        while True:
+            data = f.read(1024 ** 2)
+            if not data:
+                break
+            h.update(data)
+            bytes_read += len(data)
+            if associated_task:
+                if associated_task.set_progress(bytes_read / (1024 ** 2)):
+                    return None
     if associated_task:
         associated_task.finish()
-    return hash
+    return h.hexdigest()
 
 def get_drive_space(drive_path):
     #Windows only
@@ -189,39 +140,36 @@ def copy_file(source, target, associated_task=None):
     '''
     Copy file with progress report
     '''
+    file_size = None
     if os.path.isfile(source):
         file_size = os.path.getsize(source)
     elif os.path.ismount(source):
         if sys.platform.startswith("win"):
             file_size = get_drive_space(source)
             source = "\\\\.\\%s" % source[:2]
+
     if associated_task:
-        associated_task.size = file_size/1024**2
+        associated_task.size = (file_size / 1024 ** 2) if file_size else 1
         associated_task.unit = "MB"
-    source_file = open(source, "rb")
-    target_file = open(target, "wb")
+
     data_read = 0
-    while True:
-        data = source_file.read(1024**2)
-        data_read += 1
-        if data == "":
-            break
-        if associated_task:
-            if associated_task.set_progress(data_read):
-                source_file.close()
-                target_file.close()
-                return
-        target_file.write(data)
-        if data_read >= file_size:
-            break
-    source_file.close()
-    target_file.close()
+    with open(source, "rb") as source_file, open(target, "wb") as target_file:
+        while True:
+            data = source_file.read(1024 ** 2)
+            if not data:
+                break
+            data_read += len(data)
+            target_file.write(data)
+            if associated_task:
+                if associated_task.set_progress(data_read / (1024 ** 2)):
+                    return
+
     if associated_task:
         associated_task.finish()
 
-def reversed(list):
-    list.reverse()
-    return list
+def reverse_list(lst):
+    lst.reverse()
+    return lst
 
 def read_file(file_path, binary=False):
     if not file_path or not os.path.isfile(file_path):
