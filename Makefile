@@ -65,41 +65,16 @@ version.py:
 	sh -c 'echo "revision = $(REVISION)" >> build/version.py'
 	sh -c 'echo "application_name = \"$(PACKAGE)\"" >> build/version.py'
 
-winboot2:
-	mkdir -p build/winboot build/winboot/EFI build/grubutil
-	cp -f data/wubildr.cfg data/wubildr-bootstrap.cfg build/winboot/
-	/usr/lib/grub/i386-pc/grub-ntldr-img --grub2 \
-		--boot-file=wubildr \
-		-o "build/winboot/wubildr.mbr"
-	sh -c 'cd build/winboot && tar cf wubildr.tar wubildr.cfg'
-	grub-mkimage -O i386-pc \
-		-c "build/winboot/wubildr-bootstrap.cfg" \
-		-m "build/winboot/wubildr.tar" \
-		-o "build/grubutil/core.img" \
-		loadenv biosdisk part_msdos part_gpt fat ntfs ext2 ntfscomp \
-		iso9660 loopback search linux boot minicmd cat chain \
-		halt help ls reboot echo test configfile gzio normal sleep \
-		memdisk tar font gfxterm gettext true vbe vga video_bochs video_cirrus probe
-	sh -c "cat /usr/lib/grub/i386-pc/lnxboot.img \
-		'build/grubutil/core.img' \
-		> 'build/winboot/wubildr'"
+winboot: check_winboot
+	mkdir -p build/winboot/EFI
+	cp -f data/menu.winboot build/winboot/grub.cfg
+	echo "UEFI bootloader ready (no MBR support)"
 
-winboot: grub4dos grubutil
-	mkdir -p build/winboot
-	cp -f data/menu.winboot build/winboot/menu.lst
-	cp -f build/grub4dos/stage2/grldr build/winboot/wubildr
-	cp -f build/grub4dos/stage2/grub.exe build/winboot/wubildr.exe
-	dd if=build/winboot/wubildr of=build/winboot/wubildr.mbr bs=1 count=8192
-	sh -c 'cd build/winboot && ../grubutil/grubinst/grubinst -o -b=wubildr wubildr.mbr'
-
+# Using the UEFI fork by chenall, which is more up-to-date and has better support for modern hardware.
 grub4dos: src/grub4dos/*
 	cp -rf src/grub4dos build
 	sh -c 'cd build/grub4dos && ./configure --enable-preset-menu=../../data/menu.winboot'
 	sh -c 'cd build/grub4dos && make'
-
-grubutil: src/grubutil/grubinst/*
-	cp -rf src/grubutil build
-	sh -c 'cd build/grubutil/grubinst && make'
 
 runbin: wubi
 	rm -rf build/test

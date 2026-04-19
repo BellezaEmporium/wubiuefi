@@ -17,6 +17,8 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+from pathlib import Path
+import string
 import sys
 import os
 import locale
@@ -131,10 +133,15 @@ class Backend(object):
 
     # ── Internal helpers ─────────────────────────────────────────────────────
 
-    def _decode(self, output):
-        if isinstance(output, (bytes, bytearray, memoryview)):
-            return bytes(output).decode('utf-8', errors='replace')
-        return output or ""
+    def _decode(self, value):
+        if isinstance(value, str):
+            return value
+        elif isinstance(value, (bytes, memoryview)):
+            try:
+                return bytes(value).decode('utf-8', 'ignore')
+            except Exception:
+                return bytes(value).decode('ascii', 'ignore')
+        return str(value)
 
     def _has_aria2c(self):
         """Verifies if aria2c is available."""
@@ -162,16 +169,11 @@ class Backend(object):
             if os.path.isfile(path):
                 return path
         raise FileNotFoundError("bcdedit.exe not found")
-
+    
     def contains_partition(self, value):
-        if isinstance(value, str):
-            text = value
-        elif isinstance(value, memoryview):
-            text = value.tobytes().decode('utf-8', errors='ignore')
-        else:
-            text = bytes(value).decode('utf-8', errors='ignore')
-        return 'partition=' in text
-
+        decoded_value = self._decode(value)
+        return "partition" in decoded_value.lower()
+    
     # ── System information ─────────────────────────────────────────────────
 
     def fetch_basic_info(self):
@@ -234,6 +236,9 @@ class Backend(object):
         self.info.previous_distro_name = self.get_previous_distro_name()
         self.info.hostname = os.environ.get('COMPUTERNAME', 'wubi-host').lower()
         self.info.username = self.info.host_username
+        
+        # Initialisation du drapeau de protection UEFI
+        self._is_already_configured = False
 
         # Redefine root_dir from the actual exe, then derive data_dir etc.
         # Skip in PyInstaller mode — get_base_path() has already set everything up.
@@ -253,39 +258,39 @@ class Backend(object):
             original_exe = self.info.original_exe
         else:
             original_exe = abspath(sys.argv[0])
-        log.debug("original_exe=%s" % original_exe)
+        log.debug(f"original_exe={original_exe}")
         return original_exe
 
     def get_platform(self):
         p = sys.platform
-        log.debug("platform=%s" % p)
+        log.debug(f"platform={p}")
         return p
 
     def get_osname(self):
         n = os.name
-        log.debug("osname=%s" % n)
+        log.debug(f"osname={n}")
         return n
 
     def get_language_encoding(self):
         language, encoding = locale.getdefaultlocale()
-        log.debug("language=%s encoding=%s" % (language, encoding))
+        log.debug(f"language={language} encoding={encoding}")
         return language, encoding
 
     def get_arch(self):
         arch = platform.machine()
-        log.debug("arch=%s" % arch.lower())
+        log.debug(f"arch={arch.lower()}")
         return arch.lower()
 
     def get_locale(self, language_country, fallback="en_US"):
         _locale = lang_country2linux_locale.get(language_country)
         if not _locale:
             _locale = lang_country2linux_locale.get(fallback)
-        log.debug("locale=%s" % _locale)
+        log.debug(f"locale={_locale}")
         return _locale
 
     def get_total_memory_mb(self):
         mb = get_total_memory_mb()
-        log.debug("total_memory_mb=%s" % mb)
+        log.debug(f"total_memory_mb={mb}")
         return mb
 
     def get_windows_version(self):
@@ -304,7 +309,7 @@ class Backend(object):
                 version = {0: '2000', 1: 'xp', 2: '2003'}.get(minor)
             elif major >= 6:
                 version = 'vista'
-        log.debug("windows version=%s" % version)
+        log.debug(f"windows version={version}")
         return version
 
     def get_windows_version2(self):
@@ -312,7 +317,7 @@ class Backend(object):
             'HKEY_LOCAL_MACHINE',
             'SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion',
             'ProductName')
-        log.debug("windows_version2=%s" % v)
+        log.debug(f"windows_version2={v}")
         return v
 
     def get_windows_sp(self):
@@ -320,7 +325,7 @@ class Backend(object):
             'HKEY_LOCAL_MACHINE',
             'SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion',
             'CSDVersion')
-        log.debug("windows_sp=%s" % sp)
+        log.debug(f"windows_sp={sp}")
         return sp
 
     def get_windows_build(self):
@@ -328,7 +333,7 @@ class Backend(object):
             'HKEY_LOCAL_MACHINE',
             'SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion',
             'CurrentBuildNumber')
-        log.debug("windows_build=%s" % b)
+        log.debug(f"windows_build={b}")
         return b
 
     def get_processor_name(self):
@@ -336,7 +341,7 @@ class Backend(object):
             'HKEY_LOCAL_MACHINE',
             'HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0',
             'ProcessorNameString')
-        log.debug("processor_name=%s" % name)
+        log.debug(f"processor_name={name}")
         return name
 
     def get_bootloader(self, windows_version):
@@ -346,7 +351,7 @@ class Backend(object):
             '95': '98', '98': '98',
         }
         bootloader = mapping.get(windows_version)
-        log.debug("bootloader=%s" % bootloader)
+        log.debug(f"bootloader={bootloader}")
         return bootloader
 
     def get_gmt(self):
@@ -358,29 +363,18 @@ class Backend(object):
             gmt = -gmt / 60
         if not gmt or gmt > 12 or gmt < -12:
             gmt = 0
-        log.debug("gmt=%s" % gmt)
+        log.debug(f"gmt={gmt}")
         return gmt
 
     def get_country(self):
-        from .mappings import name2country, gmt2country
         icountry = registry.get_value(
             'HKEY_CURRENT_USER', 'Control Panel\\International', 'iCountry')
-        country = None
         if icountry is not None:
             try:
                 icountry = int(icountry)
-            except Exception:
-                pass
-            country = win32_mappings.icountry2country.get(icountry)
-            if not country:
-                scountry = registry.get_value(
-                    'HKEY_CURRENT_USER', 'Control Panel\\International', 'sCountry')
-                country = name2country.get(scountry) if scountry else None
-            if not country:
-                country = gmt2country.get(self.info.gmt)
-        country = country or "US"
-        log.debug("country=%s" % country)
-        return country
+            except (ValueError, TypeError):
+                log.debug("Cannot convert country code to integer: %s", icountry)
+            return icountry
 
     def get_timezone(self):
         from .mappings import country2tz, country_gmt2tz, gmt2tz
@@ -388,24 +382,18 @@ class Backend(object):
         timezone = country_gmt2tz.get((self.info.country, self.info.gmt), timezone)
         if not timezone:
             timezone = gmt2tz.get(self.info.gmt)
-        if not timezone:
+        if not timezone or not self.contains_partition(timezone):
             timezone = "America/New_York"
-        log.debug("timezone=%s" % timezone)
+        log.debug(f"timezone={timezone}")
         return timezone
 
     def get_windows_username(self):
         username = os.getenv('username') or ''
-        if isinstance(username, bytes):
-            username = username.decode('ascii', 'ignore')
-        log.debug("windows_username=%s" % username)
-        return username
+        return self._decode(username)
 
     def get_windows_user_full_name(self):
-        name = os.getenv('username') or ''
-        if isinstance(name, bytes):
-            name = name.decode('ascii', 'ignore')
-        log.debug("user_full_name=%s" % name)
-        return name
+        full_name = os.getenv('fullname') or ''
+        return self._decode(full_name)
 
     def get_windows_user_dir(self):
         homedrive = os.getenv('homedrive')
@@ -415,18 +403,18 @@ class Backend(object):
             user_directory = join_path(homedrive, homepath)
             if isinstance(user_directory, bytes):
                 user_directory = user_directory.decode('ascii', 'ignore')
-        log.debug("user_directory=%s" % user_directory)
+        log.debug(f"user_directory={user_directory}")
         return user_directory
 
     def get_windows_language_code(self):
         lang = (self.info.language or "")[:2]
         code = win32_mappings.language2n.get(lang) or 1033  # fallback English
-        log.debug("windows_language_code=%s" % code)
+        log.debug(f"windows_language_code={code}")
         return code
 
     def get_windows_language(self):
         lang = win32_mappings.n2fulllanguage.get(self.info.windows_language_code, "English")
-        log.debug("windows_language=%s" % lang)
+        log.debug(f"windows_language={lang}")
         return lang
 
     def get_keyboard_layout(self):
@@ -435,12 +423,12 @@ class Backend(object):
         variant_id = win_keyboard_id & 0xFFFFFFFF
         layout  = win32_mappings.keymaps.get(locale_id) or self.info.country.lower()
         variant = win32_mappings.hkl2variant.get(variant_id) or ""
-        log.debug("keyboard_layout=%s variant=%s" % (layout, variant))
+        log.debug(f"keyboard_layout={layout} variant={variant}")
         return layout, variant
 
     def get_system_drive(self):
         drive = Drive(os.getenv('SystemDrive'))
-        log.debug("system_drive=%s" % drive)
+        log.debug(f"system_drive={drive}")
         return drive
 
     def get_drives(self):
@@ -448,32 +436,38 @@ class Backend(object):
         for letter in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ':
             drive = Drive(letter)
             if drive.type:
-                log.debug("drive=%s" % str(drive))
+                log.debug(f"drive={drive}")
                 drives.append(drive)
         return drives
 
     def get_registry_key(self):
         key = ('Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\'
                + self.info.application_name.capitalize())
-        log.debug("registry_key=%s" % key)
+        log.debug(f"registry_key={key}")
         return key
 
     def get_uninstaller_path(self):
         path = registry.get_value(
             'HKEY_LOCAL_MACHINE', self.info.registry_key, 'UninstallString')
-        log.debug("uninstaller_path=%s" % path)
+        if path:
+            # Nettoyage pour extraire uniquement le chemin (suppression des arguments comme --uninstall)
+            if path.startswith('"'):
+                path = path.split('"')[1]
+            else:
+                path = path.split(' --')[0].strip()
+        log.debug(f"uninstaller_path={path}")
         return path
 
     def get_previous_target_dir(self):
         d = registry.get_value(
             'HKEY_LOCAL_MACHINE', self.info.registry_key, 'InstallationDir')
-        log.debug("previous_target_dir=%s" % d)
+        log.debug(f"previous_target_dir={d}")
         return d
 
     def get_previous_distro_name(self):
         name = registry.get_value(
             'HKEY_LOCAL_MACHINE', self.info.registry_key, 'DisplayName')
-        log.debug("previous_distro_name=%s" % name)
+        log.debug(f"previous_distro_name={name}")
         return name
 
     def get_startup_folder(self):
@@ -482,7 +476,7 @@ class Backend(object):
             'SOFTWARE\\Microsoft\\Windows\\CurrentVersion'
             '\\Explorer\\Shell Folders',
             'Common Startup')
-        log.debug("startup_folder=%s" % folder)
+        log.debug(f"startup_folder={folder}")
         return folder
 
     def _get_source_id(self):
@@ -516,14 +510,14 @@ class Backend(object):
                         for entry in sources:
                             if entry.get('default'):
                                 source_id = entry.get('id', '')
-                                log.debug("source_id from ISO: %s" % source_id)
+                                log.debug(f"source_id from ISO: {source_id}")
                                 return source_id
             except Exception as e:
-                log.debug("Could not read install-sources.yaml: %s" % e)
+                log.debug(f"Could not read install-sources.yaml: {e}")
 
         # Fallback to static map
         source_id = SOURCE_ID_MAP.get(distro_name, 'ubuntu-desktop')
-        log.debug("source_id from map: %s (distro=%s)" % (source_id, distro_name))
+        log.debug(f"source_id from map: {source_id} (distro={distro_name})")
         return source_id
 
     def get_installer_type(self):
@@ -534,7 +528,7 @@ class Backend(object):
             or 'ubuntu'
         ).lower().replace(' ', '-')
         installer = DISTRO2INSTALLER.get(distro_name, "calamares")
-        log.debug("installer_type=%s" % installer)
+        log.debug(f"installer_type={installer}")
         return installer
 
     def check_secure_boot(self):
@@ -560,36 +554,22 @@ class Backend(object):
             bcdedit = self._find_bcdedit()
             result  = run_command([bcdedit, '/enum'])
         except Exception as err:
-            log.warning("EFI detection skipped: %s" % err)
+            log.warning(f"EFI detection skipped: {err}")
             return False
         result = self._decode(result).lower()
         efi = "bootmgfw.efi" in result or "winload.efi" in result
-        log.debug("EFI boot=%s" % efi)
+        log.debug(f"EFI boot={efi}")
         return efi
 
     # ── Task lists ────────────────────────────────────────────────────────────
 
     def get_installation_tasklist(self):
-        log.debug("get_installation_tasklist distro=%s" % self.info.distro)
-        log.debug("get_installation_tasklist target_drive=%s" % self.info.target_drive)
+        log.debug(f"get_installation_tasklist distro={self.info.distro}")
+        log.debug(f"get_installation_tasklist target_drive={self.info.target_drive}")
         self.cache_iso_path()
-        log.debug("get_installation_tasklist iso_path=%s" % self.iso_path)
+        log.debug(f"get_installation_tasklist iso_path={self.iso_path}")
         dimage = self.info.distro.diskimage
-        if dimage and not self.iso_path and not self.info.target_drive.is_fat():
-            tasks = [
-                Task(self.select_target_dir,        description=_("Selecting the target directory")),
-                Task(self.create_dir_structure,      description=_("Creating the directories")),
-                Task(self.create_uninstaller,        description=_("Creating the uninstaller")),
-                Task(self.create_preseed_diskimage,  description=_("Creating a preseed file")),
-                Task(self.get_diskimage,             description=_("Retrieving installation files")),
-                Task(self.extract_diskimage,         description=_("Extracting")),
-                Task(self.choose_disk_sizes,         description=_("Choosing disk sizes")),
-                Task(self.expand_diskimage,          description=_("Expanding")),
-                Task(self.create_swap_diskimage,     description=_("Creating virtual memory")),
-                Task(self.modify_bootloader,         description=_("Adding a new bootloader entry")),
-                Task(self.diskimage_bootloader,      description=_("Installing the bootloader")),
-            ]
-        else:
+        if dimage and not self.info.target_drive.is_fat():
             tasks = [
                 Task(self.select_target_dir,          description=_("Selecting the target directory")),
                 Task(self.create_dir_structure,       description=_("Creating the installation directories")),
@@ -611,12 +591,12 @@ class Backend(object):
 
     def get_uninstallation_tasklist(self):
         tasks = [
-            Task(self.undo_bootloader,    _("Remove bootloader entry")),
-            Task(self.remove_target_dir,  _("Remove target dir")),
-            Task(self.remove_registry_key,_("Remove registry key")),
+            Task(self.undo_bootloader,    description=_("Remove bootloader entry")),
+            Task(self.remove_target_dir,  description=_("Remove target dir")),
+            Task(self.remove_registry_key,description=_("Remove registry key")),
         ]
         return ThreadedTaskList(
-            description=_("Uninstalling %s") % self.info.previous_distro_name,
+            description=_(f"Uninstalling {self.info.previous_distro_name}"),
             tasks=tasks,
         )
 
@@ -642,12 +622,12 @@ class Backend(object):
         target_dir = target_dir.replace(' ', '_').replace('__', '_')
         if os.path.exists(target_dir):
             raise Exception(
-                "Cannot install into %s.\n"
-                "There is another file or directory with this name.\n"
-                "Please remove it before continuing." % target_dir
+                f"Cannot install into {target_dir}.\n"
+                f"There is another file or directory with this name.\n"
+                f"Please remove it before continuing." 
             )
         self.info.target_dir = target_dir
-        log.info("Installing into %s" % target_dir)
+        log.info(f"Installing into {target_dir}")
         self.info.icon = join_path(
             self.info.target_dir, self.info.distro.name + '.ico')
 
@@ -684,17 +664,16 @@ class Backend(object):
 
     def get_distros(self):
         isolist_path = join_path(self.info.data_dir, 'isolist.ini')
-        log.debug("isolist_path=%s exists=%s" % (
-            isolist_path, os.path.isfile(isolist_path)))
+        log.debug(f"isolist_path={isolist_path} exists={os.path.isfile(isolist_path)}")
         return self.parse_isolist(isolist_path)
 
     def parse_isolist(self, isolist_path):
-        log.debug("Parsing isolist=%s" % isolist_path)
+        log.debug(f"Parsing isolist={isolist_path}")
         isolist = configparser.ConfigParser()
         isolist.read(isolist_path)
         distros = []
         for distro in isolist.sections():
-            log.debug("  Adding distro %s" % distro)
+            log.debug(f"  Adding distro {distro}")
             kargs = dict(isolist.items(distro))
             kargs.setdefault('md5sums', '')
             kargs.setdefault('iso_url', '')
@@ -723,7 +702,7 @@ class Backend(object):
 
     def find_any_iso(self):
         if self.info.iso_path and os.path.exists(self.info.iso_path):
-            log.debug("Checking pre-specified ISO %s" % self.info.iso_path)
+            log.debug(f"Checking pre-specified ISO {self.info.iso_path}")
             for distro in self.info.distros:
                 if distro.is_valid_iso(self.info.iso_path, self.info.check_arch):
                     return self.info.iso_path, distro
@@ -749,7 +728,7 @@ class Backend(object):
 
     def check_cd(self, cd_path, associated_task=None):
         if associated_task:
-            associated_task.description = _("Checking CD %s") % cd_path
+            associated_task.description = _(f"Checking CD {cd_path}")
         if not self.info.distro.is_valid_cd(cd_path, check_arch=False):
             return False
         self.set_distro_from_arch(cd_path)
@@ -766,7 +745,7 @@ class Backend(object):
         return True
 
     def check_iso(self, iso_path, associated_task=None):
-        log.debug("Checking %s" % iso_path)
+        log.debug(f"Checking {iso_path}")
         if not self.info.distro.is_valid_iso(iso_path, check_arch=False):
             return False
         self.set_distro_from_arch(iso_path)
@@ -774,7 +753,7 @@ class Backend(object):
             return True
         base_url = getattr(self.info.distro, 'releases_url', None)
         if not base_url:
-            base_url = "https://releases.ubuntu.com/%s" % self.info.distro.version
+            base_url = f"https://releases.ubuntu.com/{self.info.distro.version}"
         return verify_iso(
             base_url=base_url,
             iso_path=iso_path,
@@ -785,13 +764,13 @@ class Backend(object):
         )
 
     def check_file(self, file_path, relpath, md5sums, associated_task=None):
-        log.debug("  checking %s" % file_path)
+        log.debug(f"  checking {file_path}")
         if associated_task:
-            associated_task.description = _("Checking %s") % file_path
+            associated_task.description = _(f"Checking {file_path}")
         relpath  = relpath.replace("\\", "/")
-        md5line  = find_line_in_file(md5sums, "./%s" % relpath, endswith=True)
+        md5line  = find_line_in_file(md5sums, f"./{relpath}", endswith=True)
         if not md5line:
-            raise Exception("Cannot find md5 in %s for %s" % (md5sums, relpath))
+            raise Exception(f"Cannot find md5 in {md5sums} for {relpath}")
         reference_hash = md5line.split()[0]
         hash_len = len(reference_hash) * 4
         if hash_len == 160:
@@ -801,11 +780,7 @@ class Backend(object):
         else:
             hash_name = 'md5'
         hash_file = get_file_hash(file_path, hash_name, associated_task)
-        log.debug("  %s %s = %s %s %s" % (
-            file_path, hash_name, hash_file,
-            "==" if hash_file == reference_hash else "!=",
-            reference_hash,
-        ))
+        log.debug(f"  {file_path} {hash_name} = {hash_file} {'==' if hash_file == reference_hash else '!='} {reference_hash}")
         return hash_file == reference_hash
 
     def set_distro_from_arch(self, cd_or_iso_path):
@@ -815,8 +790,7 @@ class Backend(object):
         if self.info.distro.arch == arch:
             return
         name = self.info.distro.name
-        log.debug("Using distro %s %s instead of %s %s" % (
-            name, arch, name, self.info.distro.arch))
+        log.debug(f"Using distro {name} {arch} instead of {name} {self.info.distro.arch}")
         distro = self.info.distros_dict.get((name.lower(), arch))
         self.info.distro = distro
 
@@ -848,23 +822,26 @@ class Backend(object):
             import pycdlib
             iso = pycdlib.pycdlib.PyCdlib()
             iso.open(iso_path)
-
-            use_joliet = iso.has_joliet()
-            use_rr = iso.has_rock_ridge()
             try:
                 names = []
-                if use_joliet:
-                    for dirname, dirlist, filelist in iso.walk(joliet_path='/'):
-                        for filename in filelist:
-                            clean = filename.split(';')[0].rstrip('.')
-                            path  = (dirname.rstrip('/') + '/' + clean).lstrip('/')
-                            names.append(os.path.normpath(path) if path else clean)
-                if use_rr:
-                    for dirname, dirlist, filelist in iso.walk(rr_path='/'):
-                        for filename in filelist:
-                            clean = filename.split(';')[0].rstrip('.')
-                            path  = (dirname.rstrip('/') + '/' + clean).lstrip('/')
-                            names.append(os.path.normpath(path) if path else clean)
+                # Try Rock Ridge first (Ubuntu), then Joliet, then plain ISO 9660
+                if iso.has_rock_ridge():
+                    walk_kwargs = {'rr_path': '/'}
+                    name_attr = 'rock_ridge'
+                elif iso.has_joliet():
+                    walk_kwargs = {'joliet_path': '/'}
+                    name_attr = 'joliet'
+                else:
+                    walk_kwargs = {'iso_path': '/'}
+                    name_attr = 'iso9660'
+                
+                log.debug(f"get_iso_file_names using {name_attr}")
+                
+                for dirname, dirlist, filelist in iso.walk(**walk_kwargs):
+                    for filename in filelist:
+                        clean = filename.split(';')[0].rstrip('.')
+                        path  = (dirname.rstrip('/') + '/' + clean).lstrip('/')
+                        names.append(os.path.normpath(path) if path else clean)
                 names.sort()
                 self.cache[iso_path] = names
                 return names
@@ -875,10 +852,10 @@ class Backend(object):
             return []
 
     def extract_file_from_iso(self, iso_path, file_path,
-                            output_dir=None, overwrite=False):
-        log.debug("  extracting %s from %s" % (file_path, iso_path))
+                              output_dir=None, overwrite=False):
+        log.debug(f"  extracting {file_path} from {iso_path}")
         if not iso_path or not os.path.exists(iso_path):
-            raise Exception("Invalid path %s" % iso_path)
+            raise Exception(f"Invalid path {iso_path}")
         if not output_dir:
             output_dir = tempfile.gettempdir()
         output_file = join_path(output_dir, os.path.basename(file_path))
@@ -886,13 +863,13 @@ class Backend(object):
             if overwrite:
                 os.unlink(output_file)
             else:
-                raise Exception("Cannot overwrite %s" % output_file)
+                raise Exception(f"Cannot overwrite {output_file}")
         try:
             import pycdlib
             iso = pycdlib.pycdlib.PyCdlib()
             iso.open(iso_path)
+            use_rr     = iso.has_rock_ridge()
             use_joliet = iso.has_joliet()
-            use_rr = iso.has_rock_ridge()
             try:
                 iso_file_path = '/' + file_path.replace('\\', '/').lstrip('/')
                 os.makedirs(output_dir, exist_ok=True)
@@ -900,10 +877,10 @@ class Backend(object):
                 for candidate in [iso_file_path, iso_file_path.upper(), iso_file_path.lower()]:
                     try:
                         with open(output_file, 'wb') as f:
-                            if use_joliet:
-                                iso.get_file_from_iso_fp(f, joliet_path=iso_file_path)
                             if use_rr:
                                 iso.get_file_from_iso_fp(f, rr_path=iso_file_path)
+                            elif use_joliet:
+                                iso.get_file_from_iso_fp(f, joliet_path=iso_file_path)
                             else:
                                 iso.get_file_from_iso_fp(f, iso_path=iso_file_path.upper())
                             iso_file_path = candidate
@@ -968,16 +945,16 @@ class Backend(object):
                 self.dimage_path = dl(diskimage, save_as, web_proxy=proxy)
             return self.dimage_path is not None
         except Exception:
-            log.exception("Cannot download disk image %s" % diskimage)
+            log.exception(f"Cannot download disk image {diskimage}")
             return False
 
     def get_prespecified_diskimage(self, associated_task):
         if self.info.dimage_path and os.path.exists(self.info.dimage_path):
             self.dimage_path = self.info.dimage_path
-            log.debug("Trying pre-specified disk image %s" % self.info.dimage_path)
+            log.debug(f"Trying pre-specified disk image {self.info.dimage_path}")
             is_valid = (associated_task.add_subtask(
                 self.info.distro.is_valid_dimage,
-                description=_("Validating %s") % self.info.dimage_path)
+                description=_(f"Validating {self.info.dimage_path}"))
                 if associated_task else self.info.distro.is_valid_dimage)
             if is_valid(self.info.dimage_path, self.info.check_arch):
                 self.info.cd_path = None
@@ -985,10 +962,10 @@ class Backend(object):
 
     def get_prespecified_iso(self, associated_task):
         if self.info.iso_path and os.path.exists(self.info.iso_path):
-            log.debug("Trying pre-specified ISO %s" % self.info.iso_path)
+            log.debug(f"Trying pre-specified ISO {self.info.iso_path}")
             is_valid = (associated_task.add_subtask(
                 self.info.distro.is_valid_iso,
-                description=_("Validating %s") % self.info.iso_path)
+                description=_(f"Validating {self.info.iso_path}"))
                 if associated_task else self.info.distro.is_valid_iso)
             if is_valid(self.info.iso_path, self.info.check_arch):
                 self.info.cd_path = None
@@ -1004,7 +981,7 @@ class Backend(object):
 
         # Torrent requested but aria2c unavailable — try diskimage2 directly
         if dimage and dimage.endswith('.torrent') and not self._has_aria2c():
-            log.info("Torrent demandé mais aria2c absent — essai diskimage2")
+            log.info("Torrent was asked for but aria2c is not available, trying direct download if available")
             if dimage2 and self.download_diskimage(dimage2, associated_task):
                 if associated_task:
                     return associated_task.finish()
@@ -1036,7 +1013,7 @@ class Backend(object):
         copy_dimage = (associated_task.add_subtask(
             copy_file, description=_("Copying installation files"))
             if associated_task else copy_file)
-        log.debug("Copying %s > %s" % (dimage_path, dest))
+        log.debug(f"Copying {dimage_path} > {dest}")
         copy_dimage(dimage_path, dest)
         return True
 
@@ -1052,13 +1029,13 @@ class Backend(object):
                 mover = (associated_task.add_subtask(
                     shutil.move, description=_("Copying installation files"))
                     if associated_task else shutil.move)
-                log.debug("Moving %s > %s" % (iso_path, dest))
+                log.debug(f"Moving {iso_path} > {dest}")
                 mover(iso_path, dest)
             else:
                 copier = (associated_task.add_subtask(
                     copy_file, description=_("Copying installation files"))
                     if associated_task else copy_file)
-                log.debug("Copying %s > %s" % (iso_path, dest))
+                log.debug(f"Copying {iso_path} > {dest}")
                 copier(iso_path, dest)
             self.info.cd_path  = None
             self.info.iso_path = dest
@@ -1068,7 +1045,7 @@ class Backend(object):
         if self.iso_path:
             extract_iso = (associated_task.add_subtask(
                 copy_file,
-                description=_("Extracting files from %s") % self.iso_path)
+                description=_(f"Extracting files from {self.iso_path}"))
                 if associated_task else copy_file)
             self.info.iso_path = join_path(
                 self.info.install_dir, self.iso_path.split('/')[-1])
@@ -1086,7 +1063,7 @@ class Backend(object):
             if not check_iso(self.info.iso_path):
                 subversion = self.info.cd_distro.get_info(self.info.cd_path)[2]
                 if subversion.lower() in ("alpha", "beta", "release candidate"):
-                    log.error("CD check failed, but ignoring because CD is %s" % subversion)
+                    log.error(f"CD check failed, but ignoring because CD is {subversion}")
                 else:
                     self.info.cd_path  = None
                     self.info.iso_path = None
@@ -1095,7 +1072,7 @@ class Backend(object):
 
     def use_iso(self, associated_task):
         if self.iso_path:
-            log.debug("Trying to use ISO %s" % self.iso_path)
+            log.debug(f"Trying to use ISO {self.iso_path}")
             return self.copy_iso(self.iso_path, associated_task)
 
     # ── Kernel ────────────────────────────────────────────────────────────────
@@ -1103,7 +1080,7 @@ class Backend(object):
     def extract_kernel(self, associated_task=None):
         bootdir = self.info.install_boot_dir
         if self.info.iso_path:
-            log.debug("Extracting files from ISO %s" % self.info.iso_path)
+            log.debug(f"Extracting files from ISO {self.info.iso_path}")
             if self.info.distro.md5sums:
                 self.extract_file_from_iso(
                     self.info.iso_path, self.info.distro.md5sums, output_dir=bootdir)
@@ -1123,7 +1100,7 @@ class Backend(object):
                 (self.info.initrd, self.info.distro.initrd),
             ]:
                 if not self.check_file(file_path, rel_path, md5sums):
-                    raise Exception("File %s is corrupted" % file_path)
+                    raise Exception(f"File {file_path} is corrupted")
         else:
             log.debug("No md5sums provided for this distro, skipping integrity check")
 
@@ -1142,7 +1119,7 @@ class Backend(object):
         if isinstance(template, (bytes, bytearray, memoryview)):
             template = bytes(template).decode('utf-8', errors='ignore')
         if not template:
-            raise Exception("Could not read autoinstall template: %s" % source)
+            raise Exception(f"Could not read autoinstall template: {source}")
         hashed_password = hash_password(self.info.password)
         dic = dict(
             locale           = self.info.locale,
@@ -1153,12 +1130,12 @@ class Backend(object):
             hostname         = self.info.distro.name.lower().replace(' ', '-'),
             username         = self.info.username,
             hashed_password  = hashed_password,
-            source_id        = 'ubuntu-desktop',
+            source_id        = 'ubuntu-desktop'
         )
         content = template
         for k, v in dic.items():
             content = content.replace('$(%s)' % k, v if v is not None else '')
-        autoinstall_dir = join_path(self.info.custominstall, 'autoinstall')
+        autoinstall_dir = join_path(self.info.custom_install, 'autoinstall')
         os.makedirs(autoinstall_dir, exist_ok=True)
         write_file(join_path(autoinstall_dir, 'autoinstall.yaml'), content)
 
@@ -1231,7 +1208,7 @@ class Backend(object):
         source   = join_path(self.info.data_dir, 'preseed.disk')
         template = read_file(source)
         if template is None:
-            raise Exception("Could not read preseed template: %s" % source)
+            raise Exception(f"Could not read preseed template: {source}")
         if isinstance(template, (bytes, bytearray, memoryview)):
             template = bytes(template).decode('utf-8', errors='ignore')
         password = md5_password(self.info.password)
@@ -1262,15 +1239,15 @@ class Backend(object):
     def modify_grub_configuration(self, associated_task=None):
         installer     = getattr(self.info.distro, 'installer', 'subiquity')
         template_file = join_path(
-            self.info.data_dir, 'grub.install.%s.cfg' % installer)
+            self.info.data_dir, f'grub.install.{installer}.cfg')
         template = read_file(template_file)
         if template is None:
-            raise Exception("Could not read grub template: %s" % template_file)
+            raise Exception(f"Could not read grub template: {template_file}")
         if isinstance(template, (bytes, bytearray, memoryview)):
             template = bytes(template).decode('utf-8', errors='ignore')
         isopath   = unix_path(self.info.iso_path) if self.info.iso_path else ""
         dic = dict(
-            custom_installation_dir        = unix_path(self.info.custominstall) if self.info.custominstall else "",
+            custom_installation_dir        = unix_path(self.info.custominstall).lstrip('/') if self.info.custominstall else "",
             iso_path                       = isopath,
             keyboard_variant               = self.info.keyboard_variant,
             keyboard_layout                = self.info.keyboard_layout,
@@ -1292,7 +1269,7 @@ class Backend(object):
         )
         content = template
         for k, v in dic.items():
-            content = content.replace("$(%s)" % k, v if v is not None else "")
+            content = content.replace(f"$({k})", v if v is not None else "")
         write_file(
             join_path(self.info.install_boot_dir, "grub", "grub.cfg"),
             content,
@@ -1301,14 +1278,16 @@ class Backend(object):
     # ── Windows installation ──────────────────────────────────────────────────
 
     def create_uninstaller(self, associated_task=None):
-        uninstaller_name = ('uninstall-%s.exe' % self.info.application_name
-                            ).replace(' ', '_').replace('__', '_')
+        uninstaller_name = (f'uninstall-{self.info.application_name}.exe').replace(' ', '_').replace('__', '_')
         uninstaller_path = join_path(self.info.target_dir, uninstaller_name)
         if os.path.splitext(self.info.original_exe)[-1] == '.exe':
-            log.debug("Copying uninstaller %s -> %s" % (
-                self.info.original_exe, uninstaller_path))
+            log.debug(f"Copie du désinstallateur {self.info.original_exe} -> {uninstaller_path}")
             shutil.copyfile(self.info.original_exe, uninstaller_path)
-        registry.set_value('HKEY_LOCAL_MACHINE', self.info.registry_key, 'UninstallString',   uninstaller_path)
+            
+        # FIX : Ajout des guillemets et du paramètre --uninstall pour Windows
+        uninstall_string = f'"{uninstaller_path}" --uninstall'
+        registry.set_value('HKEY_LOCAL_MACHINE', self.info.registry_key, 'UninstallString',   uninstall_string)
+        
         registry.set_value('HKEY_LOCAL_MACHINE', self.info.registry_key, 'InstallationDir',   self.info.target_dir)
         registry.set_value('HKEY_LOCAL_MACHINE', self.info.registry_key, 'DisplayName',       self.info.distro.name)
         registry.set_value('HKEY_LOCAL_MACHINE', self.info.registry_key, 'DisplayIcon',       self.info.icon)
@@ -1323,7 +1302,7 @@ class Backend(object):
         self.info.custom_install = join_path(self.info.install_dir, 'custom-installation')
         src  = join_path(self.info.data_dir, 'custom-installation')
         dest = self.info.custom_install
-        log.debug("Copying %s -> %s" % (src, dest))
+        log.debug(f"Copying {src} -> {dest}")
         shutil.copytree(src, dest)
 
         if self.info.installer_type == "subiquity":
@@ -1334,21 +1313,20 @@ class Backend(object):
         src = join_path(self.info.root_dir, 'winboot')
         if isdir(src):
             dest = join_path(self.info.target_dir, 'winboot')
-            log.debug("Copying %s -> %s" % (src, dest))
+            log.debug(f"Copying {src} -> {dest}")
             shutil.copytree(src, dest)
 
         dest = join_path(self.info.custom_install, 'hooks', 'failure-command.sh')
-        msg  = _("The installation failed. Logs have been saved in: %s."
+        msg  = _(f"The installation failed. Logs have been saved in: {join_path(self.info.install_dir, 'installation-logs.zip')}."
                  "\n\nNote that in verbose mode, the logs may include the password."
                  "\n\nThe system will now reboot.")
-        msg  = msg % join_path(self.info.install_dir, 'installation-logs.zip')
-        msg  = 'msg="%s"' % msg
+        msg  = f'msg="{msg}"'
         msg  = str(msg.encode('utf8'))
         replace_line_in_file(dest, 'msg=', msg)
 
         src  = join_path(self.info.image_dir, self.info.distro.name + '.ico')
         dest = self.info.icon
-        log.debug("Copying %s -> %s" % (src, dest))
+        log.debug(f"Copying {src} -> {dest}")
         shutil.copyfile(src, dest)
 
     def uncompress_target_dir(self, associated_task=None):
@@ -1450,9 +1428,9 @@ class Backend(object):
         root     = join_path(self.info.disks_dir, 'root.disk')
         resize2fs = join_path(self.info.bin_dir, 'resize2fs.exe')
         if not associated_task:
-            run_command([resize2fs, '-f', root, '%dM' % self.info.root_size_mb])
+            run_command([resize2fs, '-f', root, f'{self.info.root_size_mb}M'])
             return
-        resize_cmd = [resize2fs, '-p', '-f', root, '%dM' % self.info.root_size_mb]
+        resize_cmd = [resize2fs, '-p', '-f', root, f'{self.info.root_size_mb}M']
         associated_task.size = 100
         associated_task.set_progress(0)
         proc = spawn_command(resize_cmd)
@@ -1483,14 +1461,16 @@ class Backend(object):
 
     def create_swap_diskimage(self, associated_task=None):
         path      = join_path(self.info.disks_dir, 'swap.disk')
-        swap_size = '%d' % (self.info.swap_size_mb * 1024 * 1024)
+        swap_size = f'{self.info.swap_size_mb * 1024 * 1024}'
         run_command(['fsutil', 'file', 'createnew', path, swap_size])
 
+    
+    # Kept for reference, but legacy MBR
     def diskimage_bootloader(self, associated_task=None):
         src  = join_path(self.info.root_dir, 'winboot')
         dest = join_path(self.info.target_dir, 'winboot')
         if isdir(src):
-            log.debug("Copying %s -> %s" % (src, dest))
+            log.debug(f"Copying {src} -> {dest}")
             shutil.copytree(src, dest)
         src = join_path(self.info.disks_dir, 'wubildr')
         shutil.copyfile(src, join_path(dest, 'wubildr'))
@@ -1506,39 +1486,21 @@ class Backend(object):
     # ── Boot loader ────────────────────────────────────────────────────────────
 
     def modify_bootloader(self, associated_task):
-        if self.info.bootloader == "vista":
-            for drive in self.info.drives:
-                if drive.type in ('removable', 'hd'):
-                    def make_bcd_task(d):
-                        def _task(associated_task=None):
-                            self.modify_bcd(d, associated_task)
-                        _task.__name__ = "modify_bcd_%s" % d.path
-                        return _task
-                    associated_task.add_subtask(make_bcd_task(drive))
-        elif self.info.bootloader == "xp":
-            for drive in self.info.drives:
-                if drive.type in ('removable', 'hd'):
-                    def make_bootini_task(d):
-                        def _task(associated_task=None):
-                            self.modify_bootini(d, associated_task)
-                        return _task
-                    associated_task.add_subtask(make_bootini_task(drive))
-        elif self.info.bootloader == "98":
-            for drive in self.info.drives:
-                def make_configsys_task(d):
+        for drive in self.info.drives:
+            if drive.type in ('removable', 'hd'):
+                def make_bcd_task(d):
                     def _task(associated_task=None):
-                        self.modify_configsys(d, associated_task)
+                        self.modify_bcd(d, associated_task)
+                    _task.__name__ = "modify_bcd_%s" % d.path
                     return _task
-                associated_task.add_subtask(make_configsys_task(drive))
+                associated_task.add_subtask(make_bcd_task(drive))
 
     def undo_bootloader(self, associated_task):
-        winboot_files = ['wubildr', 'wubildr.mbr', 'wubildr.exe']
+        winboot_files = ['wubildr', 'wubildr.exe']
         self.undo_bcd(associated_task)
         for drive in self.info.drives:
             if drive.type not in ('removable', 'hd'):
                 continue
-            self.undo_bootini(drive, associated_task)
-            self.undo_configsys(drive, associated_task)
             for f in winboot_files:
                 f = join_path(drive.path, f)
                 if os.path.isfile(f):
@@ -1551,87 +1513,102 @@ class Backend(object):
             except Exception as err:
                 log.error(err)
 
+    # ── SECURE UEFI LOGIC (IDEMPOTENCE AND MOUNTING) ─────────────────────────
+
+    def _get_available_drive_letter(self):
+        """ Finds an available drive letter on the system. """
+        if os.name != 'nt':
+            return "/mnt/esp"
+        bitmask = ctypes.windll.kernel32.GetLogicalDrives()
+        for letter in reversed(string.ascii_uppercase):
+            offset = ord(letter) - ord('A')
+            if not (bitmask & (1 << offset)):
+                return f"{letter}:"
+        raise RuntimeError("No available drive letter.")
+
+    def _get_or_mount_esp(self):
+        """ 
+        Finds or mounts the ESP partition securely to avoid
+        the Windows error 'Cannot create a file that already exists'.
+        """
+        for letter in reversed(string.ascii_uppercase):
+            drive = f"{letter}:"
+            # Check for the presence of the EFI folder
+            if Path(f"{drive}\\EFI\\Microsoft").is_dir() or Path(f"{drive}\\EFI\\Boot").is_dir():
+                try:
+                    test_file = Path(f"{drive}\\EFI\\.wubi_test")
+                    test_file.touch()
+                    test_file.unlink()
+                    return drive, False
+                except OSError:
+                    pass
+
+        drive = self._get_available_drive_letter()
+        try:
+            # capture_output avoids displaying unwanted errors in the prompt
+            subprocess.run(['mountvol', drive, '/S'], capture_output=True, text=True, check=True)
+            return drive, True
+        except subprocess.CalledProcessError as e:
+            err_msg = e.stderr or e.stdout
+            if "déjà existant" in err_msg.lower() or "already exists" in err_msg.lower():
+                return drive, True # Tolerance for the Windows bug that masks the mount
+            raise RuntimeError(f"Failed to mount ESP: {err_msg}")
+
+    def _find_existing_bcd_guid(self, bcdedit, search_path):
+        """ Searches if the BCD entry has already been created to avoid duplicates. """
+        try:
+            result = subprocess.run([bcdedit, '/v'], capture_output=True, text=True, errors='ignore')
+            current_guid = None
+            for line in result.stdout.splitlines():
+                line = line.strip().lower()
+                if line.startswith('identificateur') or line.startswith('identifier'):
+                    current_guid = line.split()[-1]
+                if line.startswith('path') and search_path.lower() in line:
+                    return current_guid
+        except Exception:
+            pass
+        return None
+
     def modify_bcd(self, drive, associated_task=None):
-        bcdedit = self._find_bcdedit()
-        boot_drive_out = run_command([bcdedit, '/enum', '{bootmgr}'])
-        boot_drive = self._decode(boot_drive_out)
-        if self.contains_partition(boot_drive):
-            idx = boot_drive.find('partition=')
-            if idx != -1:
-                boot_drive = boot_drive[idx + len('partition='):]
-        log.debug("modify_bcd %s" % drive)
-        system_drive = (os.getenv('SystemDrive') or '').upper()
-        if (drive is self.info.system_drive
-                or drive.path == "C:"
-                or (system_drive and drive.path == system_drive)
-                or drive.path == self.info.target_drive.path):
-            for fname in ('wubildr', 'wubildr.mbr'):
-                shutil.copyfile(
-                    join_path(self.info.root_dir, 'winboot', fname),
-                    join_path(drive.path, fname),
-                )
-        if registry.get_value(
-                'HKEY_LOCAL_MACHINE', self.info.registry_key, 'VistaBootDrive'):
-            log.debug("BCD has already been modified")
+        if getattr(self, '_is_already_configured', False):
+            log.info(f"Ignored: BCD entry is already configured (double call avoided on {drive.path}).")
             return
+
+        bcdedit = self._find_bcdedit()
+
+        if registry.get_value('HKEY_LOCAL_MACHINE', self.info.registry_key, 'VistaBootDrive'):
+            log.debug("BCD has already been modified (registry check).")
+            self._is_already_configured = True
+            return
+
         if self.info.efi:
-            log.debug("EFI boot")
-            efi_path = self.modify_EFI_folder(associated_task, bcdedit)
+            log.debug("Configuring UEFI bootloader...")
+            self.modify_EFI_folder(associated_task, bcdedit)
             try:
                 run_command(['powercfg', '/h', 'off'])
             except Exception as err:
                 log.error(err)
-            id_out  = run_command([bcdedit, '/copy', '{bootmgr}', '/d', self.info.distro.name])
-            id_text = self._decode(id_out)
-            match   = re.search(r'\{[^\}]+\}', id_text)
-            if not match:
-                raise Exception("Could not extract BCD entry ID: %s" % id_text)
-            bcd_id = match.group(0)
-            run_command([bcdedit, '/set', bcd_id, 'path', efi_path])
-            for cmd in [
-                [bcdedit, '/set', '{fwbootmgr}', 'displayorder', bcd_id, '/addlast'],
-                [bcdedit, '/set', '{fwbootmgr}', 'timeout', '10'],
-                [bcdedit, '/set', '{fwbootmgr}', 'bootsequence', bcd_id],
-            ]:
-                try:
-                    run_command(cmd)
-                except Exception as err:
-                    log.error(err)
-            registry.set_value('HKEY_LOCAL_MACHINE', self.info.registry_key,
-                                'VistaBootDrive', bcd_id)
-            return
-
-        id_out  = run_command([bcdedit, '/create', '/d', self.info.distro.name,
-                               '/application', 'bootsector'])
-        id_text = self._decode(id_out)
-        match   = re.search(r'\{[^\}]+\}', id_text)
-        if not match:
-            raise Exception("Could not extract BCD entry ID: %s" % id_text)
-        bcd_id   = match.group(0)
-        mbr_path = os.path.normpath(
-            join_path(self.info.target_dir, 'winboot', 'wubildr.mbr'))[2:]
-        run_command([bcdedit, '/set', bcd_id, 'device',
-                     'partition=%s' % self.info.target_drive.path])
-        run_command([bcdedit, '/set', bcd_id, 'path', mbr_path])
-        run_command([bcdedit, '/displayorder', bcd_id, '/addlast'])
-        run_command([bcdedit, '/timeout', '10'])
-        run_command([bcdedit, '/bootsequence', bcd_id])
-        registry.set_value('HKEY_LOCAL_MACHINE', self.info.registry_key,
-                            'VistaBootDrive', bcd_id)
+        else:
+            log.error('Legacy BIOS boot is not supported in this version of Wubi, due to Ubuntu dropping support in the new versions.')
+        
+        self._is_already_configured = True
 
     def undo_bcd(self, associated_task=None):
         try:
             bcdedit = self._find_bcdedit()
         except FileNotFoundError:
-            log.error("Cannot find bcdedit — BCD entry not removed")
+            log.error("Unable to find bcdedit — BCD entry was not removed")
             return
         bcd_id = registry.get_value(
             'HKEY_LOCAL_MACHINE', self.info.registry_key, 'VistaBootDrive')
         if not bcd_id:
-            log.debug("Could not find bcd id")
+            log.debug("Unable to find BCD ID")
             return
-        log.debug("Removing bcd entry %s" % bcd_id)
+        log.debug(f"Removing BCD entry {bcd_id}")
         try:
+            if self.info.efi:
+                subprocess.run([bcdedit, '/set', '{fwbootmgr}', 'displayorder', bcd_id, '/remove'], capture_output=True)
+
             run_command([bcdedit, '/delete', bcd_id, '/f'])
             registry.set_value('HKEY_LOCAL_MACHINE', self.info.registry_key,
                                 'VistaBootDrive', "")
@@ -1639,49 +1616,76 @@ class Backend(object):
             log.error(err)
 
     def modify_EFI_folder(self, associated_task, bcdedit):
-        boot_drive_out = run_command([bcdedit, '/enum', '{bootmgr}'])
-        boot_drive     = self._decode(boot_drive_out)
-        if 'partition=' in boot_drive:
-            boot_drive = boot_drive.split('partition=', 1)[1]
-        boot_drive = boot_drive.strip().splitlines()[0].split()[0] if boot_drive.strip() else ''
-        log.debug("EFI boot partition %s" % boot_drive)
-
-        mounted_temporarily = False
-        if len(boot_drive) >= 2 and boot_drive[1] == ':':
-            efi_drive = boot_drive[:2]
-        else:
-            free_letter = next(
-                (c for c in 'HIJKLMNOPQRSTUVWXYZ' if not Drive(c).type), None)
-            if not free_letter:
-                raise Exception("No free drive letter available for EFI mount")
-            efi_drive           = free_letter + ':'
-            mounted_temporarily = True
-            log.debug("Temporary EFI drive %s" % efi_drive)
-
-        if mounted_temporarily:
-            run_command(['mountvol', efi_drive, '/s'])
+        """ 
+        Copies or mounts the ESP, sets up the EFI folder with the appropriate binaries and configuration,
+        and creates the BCD entry for UEFI boot. This method is designed to be idempotent and to handle cases 
+        where the ESP is on a read-only media (like a CD-ROM or mounted ISO) gracefully.
+        """
+        esp_drive, need_unmount = self._get_or_mount_esp()
+        log.debug(f"Partition EFI montée ou détectée sur {esp_drive}")
         try:
-            src         = join_path(self.info.root_dir, 'winboot', 'EFI')
             target_name = self.info.target_dir[3:].replace(' ', '_').replace('__', '_')
-            dest_root   = join_path(efi_drive, 'EFI', target_name)
+            if not target_name:
+                target_name = self.info.application_name.replace(' ', '_')
+            
+            dest_root = join_path(esp_drive, 'EFI', target_name)
             os.makedirs(dest_root, exist_ok=True)
-            dest = join_path(dest_root, 'wubildr')
-            if os.path.exists(dest):
-                shutil.rmtree(dest)
-            log.debug("Copying EFI folder %s -> %s" % (src, dest))
-            shutil.copytree(src, dest)
-            grub_cfg   = join_path(dest, 'grub.cfg')
-            efi_prefix = ('/' + dest[3:].replace('\\', '/') + '/').replace('//', '/')
-            write_file(grub_cfg,
-                       'set prefix="%s"\nconfigfile "${prefix}wubildr.cfg"\n' % efi_prefix)
-            if self.get_efi_arch(associated_task, efi_drive) == "ia32":
-                efi_path = os.path.normpath(join_path(dest, 'grubia32.efi'))[2:]
+
+            # Copie de grub.efi (ou shim) depuis winboot/EFI
+            src_efi = join_path(self.info.root_dir, 'winboot', 'EFI')
+            if os.path.exists(src_efi):
+                # dirs_exist_ok empêche l'erreur d'écrasement en cas de réinstallation
+                shutil.copytree(src_efi, dest_root, dirs_exist_ok=True)
+
+            # Configuration pour chaîner vers le grub wubildr
+            wubildr_cfg_src = join_path(self.info.root_dir, 'winboot', 'wubildr.cfg')
+            if os.path.isfile(wubildr_cfg_src):
+                shutil.copyfile(wubildr_cfg_src, join_path(dest_root, 'wubildr.cfg'))
+
+            grub_cfg = join_path(dest_root, 'grub.cfg')
+            efi_prefix = ('/' + dest_root[3:].replace('\\', '/') + '/').replace('//', '/')
+            write_file(grub_cfg, f'set prefix="{efi_prefix}"\nconfigfile "${{prefix}}wubildr.cfg"\n')
+
+            # Gestion de l'architecture pour charger le bon binaire EFI
+            if self.get_efi_arch(associated_task, esp_drive) == "ia32":
+                efi_binary = 'grubia32.efi'
             else:
-                efi_path = os.path.normpath(join_path(dest, 'shimx64.efi'))[2:]
-            return efi_path
+                efi_binary = 'shimx64.efi'
+            
+            efi_relative_path = f"\\EFI\\{target_name}\\{efi_binary}"
+
+            # Déclaration BCD (avec vérification anti-doublon)
+            guid = self._find_existing_bcd_guid(bcdedit, efi_relative_path)
+            if guid:
+                log.info(f"Existing BCD entry found ({guid}). Updating...")
+            else:
+                create_cmd = [bcdedit, '/create', '/d', self.info.distro.name, '/application', 'bootapp']
+                res = subprocess.run(create_cmd, capture_output=True, text=True, check=True)
+                match = re.search(r'\{([a-fA-F0-9-]+)\}', res.stdout)
+                if not match:
+                    raise RuntimeError("Unable to retrieve the GUID generated by BCD.")
+                guid = f"{{{match.group(1)}}}"
+
+            commands = [
+                [bcdedit, '/set', guid, 'device', f'partition={esp_drive}'],
+                [bcdedit, '/set', guid, 'path', efi_relative_path],
+                [bcdedit, '/set', guid, 'locale', 'fr-FR'],
+                [bcdedit, '/set', guid, 'inherit', '{bootloadersettings}'],
+                [bcdedit, '/displayorder', guid, '/addlast'],
+                [bcdedit, '/set', '{fwbootmgr}', 'displayorder', guid, '/addlast'],
+                [bcdedit, '/timeout', '10'],
+                [bcdedit, '/bootsequence', guid]
+            ]
+
+            for cmd in commands:
+                subprocess.run(cmd, check=False, capture_output=True)
+
+            registry.set_value('HKEY_LOCAL_MACHINE', self.info.registry_key, 'VistaBootDrive', guid)
+            return efi_relative_path
+
         finally:
-            if mounted_temporarily:
-                run_command(['mountvol', efi_drive, '/d'])
+            if need_unmount:
+                subprocess.run(['mountvol', esp_drive, '/D'], capture_output=True)
 
     def get_efi_arch(self, associated_task, efidrive):
         mapping = {
@@ -1694,123 +1698,30 @@ class Backend(object):
         return efi_arch
 
     def undo_EFI_folder(self, associated_task=None):
-        free_letter = next(
-            (c for c in 'HIJKLMNOPQRSTUVWXYZ' if not Drive(c).type), None)
-        if not free_letter:
-            log.error("No free drive letter available for EFI mount")
+        if not self.info.previous_target_dir:
+            log.debug("No previous target directory. Skipping EFI folder removal.")
             return
-        efi_drive = free_letter + ':'
-        log.debug("Temporary EFI drive %s" % efi_drive)
+            
+        esp_drive, need_unmount = self._get_or_mount_esp()
         try:
-            run_command(['mountvol', efi_drive, '/s'])
             target_name = self.info.previous_target_dir[3:].replace(' ', '_').replace('__', '_')
-            dest = join_path(efi_drive, 'EFI', target_name, 'wubildr')
+            dest = join_path(esp_drive, 'EFI', target_name)
             if os.path.exists(dest):
-                log.debug("Removing EFI folder %s" % dest)
-                shutil.rmtree(dest)
-            run_command(['mountvol', efi_drive, '/d'])
+                log.debug(f"Removing EFI folder {dest}")
+                shutil.rmtree(dest, ignore_errors=True)
         except Exception as err:
             log.error(err)
-
-    def modify_bootini(self, drive, associated_task=None):
-        log.debug("modify_bootini %s" % drive.path)
-        bootini = join_path(drive.path, 'boot.ini')
-        if not os.path.isfile(bootini):
-            log.debug("Could not find boot.ini %s" % bootini)
-            return
-        for fname in ('wubildr', 'wubildr.mbr'):
-            shutil.copyfile(
-                join_path(self.info.root_dir, 'winboot', fname),
-                join_path(drive.path, fname),
-            )
-        run_command(['attrib', '-R', '-S', '-H', bootini])
-        boot_line = 'C:\\wubildr.mbr = "%s"' % self.info.distro.name
-        old_line  = boot_line[:boot_line.index("=")].strip().lower()
-        content   = read_file(bootini) or ''
-        if isinstance(content, (bytes, bytearray, memoryview)):
-            content = bytes(content).decode('utf-8', errors='ignore')
-        if content and content[-1] != '\n':
-            content += '\n'
-        lines      = content.split('\n')
-        is_section = False
-        for i, line in enumerate(lines):
-            if line.strip().lower() == "[operating systems]":
-                is_section = True
-            elif line.strip().startswith("["):
-                is_section = False
-            if is_section and line.strip().lower().startswith(old_line):
-                lines[i] = boot_line
-                break
-            if is_section and not line.strip():
-                lines.insert(i, boot_line)
-                break
-        write_file(bootini, '\n'.join(lines))
-        run_command(['attrib', '+R', '+S', '+H', bootini])
-
-    def undo_bootini(self, drive, associated_task=None):
-        log.debug("undo_bootini %s" % drive.path)
-        bootini = join_path(drive.path, 'boot.ini')
-        if not os.path.isfile(bootini):
-            return
-        run_command(['attrib', '-R', '-S', '-H', bootini])
-        remove_line_in_file(bootini, 'c:\\wubildr.mbr', ignore_case=True)
-        run_command(['attrib', '+R', '+S', '+H', bootini])
-
-    def modify_configsys(self, drive, associated_task=None):
-        log.debug("modify_configsys %s" % drive.path)
-        configsys = join_path(drive.path, 'config.sys')
-        if not os.path.isfile(configsys):
-            return
-        shutil.copyfile(
-            join_path(self.info.root_dir, 'winboot', 'wubildr.exe'),
-            join_path(drive.path, 'wubildr.exe'),
-        )
-        run_command(['attrib', '-R', '-S', '-H', configsys])
-        config = read_file(configsys) or ''
-        if isinstance(config, (bytes, bytearray, memoryview)):
-            config = bytes(config).decode('utf-8', errors='ignore')
-        if 'REM WUBI MENU START\n' in config:
-            log.debug("Configsys has already been modified")
-            return
-        config += (
-            '\nREM WUBI MENU START\n'
-            '[menu]\n'
-            'menucolor=15,0\n'
-            'menuitem=windows,Windows\n'
-            'menuitem=wubildr,%s\n'
-            'menudefault=windows,10\n'
-            '[wubildr]\n'
-            'device=wubildr.exe\n'
-            '[windows]\n'
-            'REM WUBI MENU END\n'
-        ) % self.info.distro.name
-        write_file(configsys, config)
-        run_command(['attrib', '+R', '+S', '+H', configsys])
-
-    def undo_configsys(self, drive, associated_task=None):
-        log.debug("undo_configsys %s" % drive.path)
-        configsys = join_path(drive.path, 'config.sys')
-        if not os.path.isfile(configsys):
-            return
-        run_command(['attrib', '-R', '-S', '-H', configsys])
-        config = read_file(configsys) or ''
-        if isinstance(config, (bytes, bytearray, memoryview)):
-            config = bytes(config).decode('utf-8', errors='ignore')
-        s = config.find('REM WUBI MENU START\n')
-        e = config.find('REM WUBI MENU END\n')
-        if s >= 0 and e >= 0:
-            e += len('REM WUBI MENU END')
-            config = config[:s] + config[e:]
-        write_file(configsys, config)
-        run_command(['attrib', '+R', '+S', '+H', configsys])
+        finally:
+            if need_unmount:
+                subprocess.run(['mountvol', esp_drive, '/d'], capture_output=True)
 
     # ── Uninstallation ───────────────────────────────────────────────────────
 
     def remove_target_dir(self, associated_task=None):
-        if not os.path.isdir(self.info.previous_target_dir):
-            log.debug("Cannot find %s" % self.info.previous_target_dir)
+        if not self.info.previous_target_dir or not os.path.isdir(self.info.previous_target_dir):
+            log.debug("Unable to find %s" % self.info.previous_target_dir)
             return
-        log.debug("Deleting %s" % self.info.previous_target_dir)
+        log.debug("Removing %s" % self.info.previous_target_dir)
         try:
             rm_tree(self.info.previous_target_dir)
         except OSError as e:
@@ -1828,18 +1739,36 @@ class Backend(object):
                 or not os.path.isfile(self.info.previous_uninstaller_path)):
             return
         uninstaller = self.info.previous_uninstaller_path
-        command     = [uninstaller, "--uninstall"]
-        if self.info.non_interactive:
+        
+        if "--uninstall" in sys.argv:
+            log.info("Uninstaller invoked (--uninstall argument detected)")
+            return
+            
+        try:
+            orig_exe = os.path.realpath(self.info.original_exe).lower()
+            prev_exe = os.path.realpath(uninstaller).lower()
+            if orig_exe == prev_exe:
+                log.info("This is the running uninstaller (path match)")
+                return
+        except Exception as e:
+            log.debug(f"Error resolving paths: {e}")
+            
+        command = [uninstaller, "--uninstall"]
+        if getattr(self.info, 'non_interactive', False):
             command.append("--noninteractive")
-        if get_file_hash(self.info.original_exe) == get_file_hash(
-                self.info.previous_uninstaller_path):
-            log.info("This is the uninstaller running")
-        else:
-            log.info("Launching previous uninstaller %s" % uninstaller)
-            process = subprocess.Popen(command)
-            process.wait()
+
+        log.info("Launching previous uninstaller %s" % uninstaller)
+        
+        try:
+            process = subprocess.Popen(command, shell=False)
+            process.wait(timeout=120)
+        except subprocess.TimeoutExpired:
+            log.error("The previous uninstaller took too long to respond and was terminated.")
+            process.kill()
+        
+        if self.application:
             self.application.quit()
-            return True
+        return True
 
     # ── Miscellaneous ──────────────────────────────────────────────────────────────────
 

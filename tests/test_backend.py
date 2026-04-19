@@ -21,7 +21,7 @@ class BackendTests(unittest.TestCase):
 
         self.uninstall_keys = [
             ('HKEY_LOCAL_MACHINE', 'registry-key', 'UninstallString',
-             os.path.join(self.temp_target_dir, 'uninstall-wubi.exe')),
+            '"%s" --uninstall' % os.path.join(self.temp_target_dir, 'uninstall-wubi.exe')),
             ('HKEY_LOCAL_MACHINE', 'registry-key', 'InstallationDir',
              self.temp_target_dir),
             ('HKEY_LOCAL_MACHINE', 'registry-key', 'DisplayName', 'Ubuntu'),

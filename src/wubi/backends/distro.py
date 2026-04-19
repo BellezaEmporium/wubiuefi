@@ -68,6 +68,7 @@ class Distro(object):
         self.diskimage2 = diskimage2
         self.iso_url = iso_url
         self.releases_url = releases_url
+        self.installer = kwargs.pop('installer', 'subiquity')
         self.md5sums = os.path.normpath(md5sums) if md5sums else None
         if isinstance(files_to_check, str):
             files_to_check = [

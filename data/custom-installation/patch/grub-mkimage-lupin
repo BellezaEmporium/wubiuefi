@@ -21,6 +21,10 @@
 # Look for wubildr on all partitions of BIOS-accessible disk devices.
 # We can safely ignore the hibernation case here, because the Windows boot
 # loader boots straight into Windows if Windows was hibernated.
+
+# In a UEFI world (which will be the norm in the future), we will have to look for wubildr on the ESP, 
+# which is FAT-formatted and should be accessible by the firmware. 
+# In that case, we can also ignore the hibernation case, because the firmware will boot straight into Windows if Windows was hibernated.
 find_wubildr () {
     local partitions=
     for disk in $(grub-probe --target=disk / 2>/dev/null); do
