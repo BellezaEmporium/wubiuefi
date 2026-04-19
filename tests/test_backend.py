@@ -92,6 +92,25 @@ class BackendTests(unittest.TestCase):
             source_id = self.back._get_source_id()
         self.assertEqual(source_id, 'ubuntu-desktop')
 
+    def test_get_installation_tasklist_without_diskimage(self):
+        """Tasklist generation should not fail when diskimage is not provided."""
+        mock_distro = mock.Mock()
+        mock_distro.name = 'ubuntu'
+        mock_distro.diskimage = None
+
+        self.back.info.distro = mock_distro
+        self.back.info.target_drive = mock.Mock()
+        self.back.info.target_drive.is_fat.return_value = False
+
+        fake_iso = os.path.join(self.temp_target_dir, 'fake.iso')
+        open(fake_iso, 'wb').close()
+        self.back.info.iso_path = fake_iso
+        self.back.info.iso_distro = mock_distro
+
+        tasklist = self.back.get_installation_tasklist()
+        self.assertIsNotNone(tasklist)
+        self.assertTrue(tasklist.subtasks, 'Expected installation tasks to be created')
+
 
     # --- Password ---
 
@@ -147,6 +166,7 @@ class BackendTests(unittest.TestCase):
         import yaml
         mock_distro = mock.Mock()
         mock_distro.name = 'ubuntu'
+        mock_distro.installer = 'subiquity'
         self.back.info.custom_install = self.temp_target_dir
         self.back.info.locale = 'fr_FR.UTF-8'
         self.back.info.keyboard_layout = 'fr'
@@ -166,7 +186,7 @@ class BackendTests(unittest.TestCase):
             print(os.listdir(autoinstall_dir))
 
         with mock.patch.object(self.back, '_get_source_id', return_value='ubuntu-desktop'):
-            self.back.create_subiquity_autoinstall()
+            self.back.create_preseed()
 
         yaml_path = os.path.join(self.temp_target_dir, 'autoinstall', 'autoinstall.yaml')
         self.assertTrue(os.path.exists(yaml_path), 'autoinstall.yaml not created')
@@ -180,6 +200,37 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(ai['identity']['username'], 'testuser')
         self.assertEqual(ai['source']['id'], 'ubuntu-desktop')
         self.assertTrue(ai['identity']['password'].startswith('$6$'))
+        early = ai['early-commands'][0]
+        self.assertEqual(early[0], '/bin/sh')
+        self.assertTrue(early[1].startswith('/isodevice/'))
+        self.assertNotIn('$(', early[1])
+        self.assertEqual(early[2], backend.unix_path(self.temp_target_dir))
+
+    def test_modify_grub_configuration_subiquity_uses_isodevice_seed(self):
+        mock_distro = mock.Mock()
+        mock_distro.installer = 'subiquity'
+        self.back.info.distro = mock_distro
+        self.back.info.install_boot_dir = os.path.join(self.temp_target_dir, 'install', 'boot')
+        self.back.info.custom_install = os.path.join(self.temp_target_dir, 'install', 'custom-installation')
+        self.back.info.iso_path = os.path.join(self.temp_target_dir, 'ubuntu.iso')
+        self.back.info.kernel = os.path.join(self.temp_target_dir, 'install', 'boot', 'vmlinuz')
+        self.back.info.initrd = os.path.join(self.temp_target_dir, 'install', 'boot', 'initrd')
+        self.back.info.keyboard_layout = 'fr'
+        self.back.info.keyboard_variant = ''
+        self.back.info.locale = 'fr_FR.UTF-8'
+        self.back.info.accessibility = ''
+
+        os.makedirs(os.path.join(self.back.info.install_boot_dir, 'grub'), exist_ok=True)
+        self.back.modify_grub_configuration()
+
+        grub_cfg = os.path.join(self.back.info.install_boot_dir, 'grub', 'grub.cfg')
+        self.assertTrue(os.path.exists(grub_cfg))
+        with open(grub_cfg, 'r') as f:
+            content = f.read()
+
+        self.assertIn('ds=nocloud\\;s=file:///../isodevice', content)
+        self.assertIn('/autoinstall/', content)
+        self.assertNotIn('$(custom_installation_dir)', content)
 
 
 if __name__ == '__main__':

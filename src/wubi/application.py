@@ -294,9 +294,7 @@ class Wubi(object):
                 self.frontend.quit()
             except Exception:
                 pass
-        if self.info.force_exit:
-            log.info("Forceful exit via sys.exit")
-            sys.exit(0)
+        sys.exit(0)
 
     # ── Factory backend / frontend ───────────────
 

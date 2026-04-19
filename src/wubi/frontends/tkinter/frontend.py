@@ -1,5 +1,4 @@
 import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
 import gettext
 import logging
 import gettext
@@ -117,8 +116,10 @@ class WindowsFrontend:
         self._wait_for_page()
 
     def show_cdboot_menu_page(self):
-        # Compatibility alias expected by application.py.
-        self.show_cd_menu_page()
+        from .cdboot_page import CDBootPage
+        self.cdboot_page = CDBootPage(self.root, self)
+        self.show_page(self.cdboot_page)
+        self._wait_for_page()
 
     def show_error_message(self, message, title=None):
         from ttkbootstrap.dialogs import Messagebox
@@ -151,13 +152,12 @@ class WindowsFrontend:
         self.progress_page = ProgressPage(self.root, self)
         
         def debug_callback(task, message=None):
-            log.debug("TASK status=%s name=%s desc=%s error=%s root_error=%s" % (
-                task.status,
-                task.name,
-                task.description,
-                task.error,
-                task.get_root().error
-            ))
+            if task.status != getattr(debug_callback, '_last_status', None) or task.error:
+                log.debug("TASK status=%s name=%s desc=%s error=%s root_error=%s" % (
+                    task.status, task.name, task.description,
+                    task.error, task.get_root().error
+                ))
+                debug_callback._last_status = task.status
             self.progress_page.on_progress(task, message)
         
         tasklist.callback = debug_callback

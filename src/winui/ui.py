@@ -271,12 +271,10 @@ class Window(BasicWindow):
             if self._default_background_brush:
                 ctypes.windll.user32.SetClassLongW(self._hwnd, win32con.GCL_HBRBACKGROUND, self._default_background_brush)
         else:
-            self._background_color = defs.RGB(red255, blue255, green255)
+            self._background_color = defs.RGB(red255, green255, blue255)
             self._background_brush = ctypes.windll.gdi32.CreateSolidBrush(self._background_color)
             self._default_background_brush = ctypes.windll.user32.SetClassLongW(self._hwnd, win32con.GCL_HBRBACKGROUND, self._background_brush)
-            self._gdi_disposables.append(self._background_color)
-            self._gdi_disposables.append(self._background_brush)
-            self._gdi_disposables.append(self._default_background_brush)
+            self._gdi_disposables.append(self._background_brush)  # only this one
 
     def set_text_color(self, red255=None, green255=None, blue255=None):
         if (red255, green255, blue255) == (None, None, None):

@@ -568,23 +568,21 @@ class Backend(object):
         log.debug(f"get_installation_tasklist target_drive={self.info.target_drive}")
         self.cache_iso_path()
         log.debug(f"get_installation_tasklist iso_path={self.iso_path}")
-        dimage = self.info.distro.diskimage
-        if dimage and not self.info.target_drive.is_fat():
-            tasks = [
-                Task(self.select_target_dir,          description=_("Selecting the target directory")),
-                Task(self.create_dir_structure,       description=_("Creating the installation directories")),
-                Task(self.uncompress_target_dir,      description=_("Uncompressing files")),
-                Task(self.create_uninstaller,         description=_("Creating the uninstaller")),
-                Task(self.copy_installation_files,    description=_("Copying installation files")),
-                Task(self.get_iso,                    description=_("Retrieving installation files")),
-                Task(self.extract_kernel,             description=_("Extracting the kernel")),
-                Task(self.choose_disk_sizes,          description=_("Choosing disk sizes")),
-                Task(self.create_preseed,             description=_("Creating a preseed file")),
-                Task(self.modify_bootloader,          description=_("Adding a new bootloader entry")),
-                Task(self.modify_grub_configuration,  description=_("Setting up installation boot menu")),
-                Task(self.create_virtual_disks,       description=_("Creating the virtual disks")),
-                Task(self.uncompress_files,           description=_("Uncompressing files")),
-            ]
+        tasks = [
+            Task(self.select_target_dir,          description=_("Selecting the target directory")),
+            Task(self.create_dir_structure,       description=_("Creating the installation directories")),
+            Task(self.uncompress_target_dir,      description=_("Uncompressing files")),
+            Task(self.create_uninstaller,         description=_("Creating the uninstaller")),
+            Task(self.copy_installation_files,    description=_("Copying installation files")),
+            Task(self.get_iso,                    description=_("Retrieving installation files")),
+            Task(self.extract_kernel,             description=_("Extracting the kernel")),
+            Task(self.choose_disk_sizes,          description=_("Choosing disk sizes")),
+            Task(self.create_preseed,             description=_("Creating a preseed file")),
+            Task(self.modify_bootloader,          description=_("Adding a new bootloader entry")),
+            Task(self.modify_grub_configuration,  description=_("Setting up installation boot menu")),
+            Task(self.create_virtual_disks,       description=_("Creating the virtual disks")),
+            Task(self.uncompress_files,           description=_("Uncompressing files")),
+        ]
         description = _("Installing %(distro)s-%(version)s") % dict(
             distro=self.info.distro.name, version=self.info.version)
         return ThreadedTaskList(description=description, tasks=tasks)
@@ -878,12 +876,11 @@ class Backend(object):
                     try:
                         with open(output_file, 'wb') as f:
                             if use_rr:
-                                iso.get_file_from_iso_fp(f, rr_path=iso_file_path)
+                                iso.get_file_from_iso_fp(f, rr_path=candidate)
                             elif use_joliet:
-                                iso.get_file_from_iso_fp(f, joliet_path=iso_file_path)
+                                iso.get_file_from_iso_fp(f, joliet_path=candidate)
                             else:
-                                iso.get_file_from_iso_fp(f, iso_path=iso_file_path.upper())
-                            iso_file_path = candidate
+                                iso.get_file_from_iso_fp(f, iso_path=candidate)
                             return output_file if isfile(output_file) else None
                     except Exception as e:
                         tried.append((candidate, str(e)))
@@ -1107,7 +1104,10 @@ class Backend(object):
     # ── Preseed / Autoinstall ─────────────────────────────────────────────────
 
     def create_preseed(self, associated_task=None):
-        installer = getattr(self.info.distro, 'installer', 'subiquity')
+        installer = getattr(self.info.distro, 'installer', None)
+        if not isinstance(installer, str):
+            installer = 'subiquity'
+        installer = installer.strip().lower() or 'subiquity'
         if installer == 'subiquity':
             self._create_autoinstall()
         else:
@@ -1120,89 +1120,33 @@ class Backend(object):
             template = bytes(template).decode('utf-8', errors='ignore')
         if not template:
             raise Exception(f"Could not read autoinstall template: {source}")
+
+        username = self.info.username or self.info.host_username or ""
+        hostname = self.info.hostname or self.info.distro.name.lower().replace(' ', '-')
+        autoinstall_base = self.info.custom_install or self.info.install_dir
+        if not autoinstall_base:
+            raise Exception("Could not determine target directory for autoinstall")
+        custom_installation_dir = unix_path(autoinstall_base)
+
         hashed_password = hash_password(self.info.password)
         dic = dict(
             locale           = self.info.locale,
             keyboard_layout  = self.info.keyboard_layout,
             keyboard_variant = self.info.keyboard_variant,
             timezone         = self.info.timezone,
-            realname         = self.info.user_full_name,
-            hostname         = self.info.distro.name.lower().replace(' ', '-'),
-            username         = self.info.username,
+            realname         = self.info.user_full_name or username,
+            hostname         = hostname,
+            username         = username,
             hashed_password  = hashed_password,
-            source_id        = 'ubuntu-desktop'
+            source_id        = self._get_source_id(),
+            custom_installation_dir = custom_installation_dir,
         )
         content = template
         for k, v in dic.items():
             content = content.replace('$(%s)' % k, v if v is not None else '')
-        autoinstall_dir = join_path(self.info.custom_install, 'autoinstall')
+        autoinstall_dir = join_path(autoinstall_base, 'autoinstall')
         os.makedirs(autoinstall_dir, exist_ok=True)
         write_file(join_path(autoinstall_dir, 'autoinstall.yaml'), content)
-
-    def create_subiquity_autoinstall(self):
-        """
-        Generates an autoinstall.yaml file for Subiquity-based installers based on the
-        user's configuration. The file is placed in the "autoinstall" subdirectory of the installation directory.
-        """
-        import yaml
-        base = self.info.custom_install or self.info.install_dir
-        autoinstall_dir = join_path(base, "autoinstall")
-        os.makedirs(autoinstall_dir, exist_ok=True)
-
-        ptable = "gpt" if getattr(self.info, 'efi', False) else "msdos"
-
-        config = {
-            "autoinstall": {
-                "version": 1,
-                "locale": self.info.locale or "en_US.UTF-8",
-                "keyboard": {
-                    "layout":  self.info.keyboard_layout  or "us",
-                    "variant": self.info.keyboard_variant or "",
-                },
-                "timezone": self.info.timezone or "Etc/UTC",
-                "identity": {
-                    "realname": self.info.user_full_name or self.info.host_username,
-                    "hostname": self.info.hostname or "ubuntu",
-                    "username": self.info.host_username or self.info.username,
-                    "password": hash_password(self.info.password),
-                },
-                "ssh": {"install-server": False},
-                "source": {
-                    "id":             self._get_source_id(),
-                    "search_drivers": True,
-                },
-                "storage": {
-                    "layout": {
-                        "name":   "direct",
-                        "ptable": ptable,
-                    }
-                },
-                "apt": {
-                    "geoip": True,
-                    "mirror-selection": {
-                        "primary": [
-                            "country-mirror",
-                            {
-                                "uri":   "http://archive.ubuntu.com/ubuntu",
-                                "arches": ["amd64"],
-                            },
-                        ]
-                    },
-                },
-                "updates":  "security",
-                "shutdown": "reboot",
-            }
-        }
-
-        write_file(
-            join_path(autoinstall_dir, "autoinstall.yaml"),
-            yaml.dump(config, default_flow_style=False, allow_unicode=True),
-        )
-        # Empty meta-data required by cloud-init
-        write_file(join_path(autoinstall_dir, "meta-data"), "")
-
-    def create_calamares_autoinstall(self):
-        log.debug("Distro uses Calamares installer, no autoinstall file will be created.")
 
     def create_preseed_diskimage(self, associated_task=None):
         source   = join_path(self.info.data_dir, 'preseed.disk')
@@ -1247,7 +1191,7 @@ class Backend(object):
             template = bytes(template).decode('utf-8', errors='ignore')
         isopath   = unix_path(self.info.iso_path) if self.info.iso_path else ""
         dic = dict(
-            custom_installation_dir        = unix_path(self.info.custominstall).lstrip('/') if self.info.custominstall else "",
+            custom_installation_dir        = unix_path(self.info.custominstall) if self.info.custominstall else "",
             iso_path                       = isopath,
             keyboard_variant               = self.info.keyboard_variant,
             keyboard_layout                = self.info.keyboard_layout,
@@ -1304,11 +1248,6 @@ class Backend(object):
         dest = self.info.custom_install
         log.debug(f"Copying {src} -> {dest}")
         shutil.copytree(src, dest)
-
-        if self.info.installer_type == "subiquity":
-            self.create_subiquity_autoinstall()
-        else:
-            self.create_calamares_autoinstall()
 
         src = join_path(self.info.root_dir, 'winboot')
         if isdir(src):
@@ -1545,14 +1484,52 @@ class Backend(object):
 
         drive = self._get_available_drive_letter()
         try:
-            # capture_output avoids displaying unwanted errors in the prompt
-            subprocess.run(['mountvol', drive, '/S'], capture_output=True, text=True, check=True)
+            # Prefer mountvol because it targets the system ESP directly.
+            mount = subprocess.run(
+                ['mountvol', drive, '/S'],
+                capture_output=True,
+                text=True,
+            )
+
+            esp_root = Path(f"{drive}\\EFI")
+            if esp_root.is_dir():
+                return drive, True
+
+            # Fallback to diskpart when mountvol does not expose the ESP.
+            list_volumes = subprocess.run(
+                ['diskpart'],
+                input="list volume\n",
+                capture_output=True,
+                text=True,
+            )
+            vol_num = None
+            for line in list_volumes.stdout.splitlines():
+                low = line.lower()
+                if 'fat32' in low and ('system' in low or 'syst' in low or 'efi' in low):
+                    m = re.search(r'volume\s+(\d+)', line, re.IGNORECASE)
+                    if m:
+                        vol_num = m.group(1)
+                        break
+
+            if vol_num is None:
+                out = (mount.stderr or mount.stdout or '').strip()
+                raise RuntimeError(f"Unable to locate ESP volume for {drive}. mountvol output: {out}")
+
+            assign = subprocess.run(
+                ['diskpart'],
+                input=f"select volume {vol_num}\nassign letter={drive[0]}\n",
+                capture_output=True,
+                text=True,
+            )
+            if assign.returncode != 0:
+                out = (assign.stderr or assign.stdout or '').strip()
+                raise RuntimeError(f"diskpart failed to assign {drive}: {out}")
+
+            if not esp_root.is_dir():
+                raise RuntimeError(f"ESP mount point is not available at {drive}\\")
             return drive, True
-        except subprocess.CalledProcessError as e:
-            err_msg = e.stderr or e.stdout
-            if "déjà existant" in err_msg.lower() or "already exists" in err_msg.lower():
-                return drive, True # Tolerance for the Windows bug that masks the mount
-            raise RuntimeError(f"Failed to mount ESP: {err_msg}")
+        except Exception as e:
+            raise RuntimeError(f"Failed to mount ESP: {e}")
 
     def _find_existing_bcd_guid(self, bcdedit, search_path):
         """ Searches if the BCD entry has already been created to avoid duplicates. """
@@ -1622,7 +1599,7 @@ class Backend(object):
         where the ESP is on a read-only media (like a CD-ROM or mounted ISO) gracefully.
         """
         esp_drive, need_unmount = self._get_or_mount_esp()
-        log.debug(f"Partition EFI montée ou détectée sur {esp_drive}")
+        log.debug(f"EFI partition mounted or seen at {esp_drive}")
         try:
             target_name = self.info.target_dir[3:].replace(' ', '_').replace('__', '_')
             if not target_name:
@@ -1631,13 +1608,10 @@ class Backend(object):
             dest_root = join_path(esp_drive, 'EFI', target_name)
             os.makedirs(dest_root, exist_ok=True)
 
-            # Copie de grub.efi (ou shim) depuis winboot/EFI
             src_efi = join_path(self.info.root_dir, 'winboot', 'EFI')
             if os.path.exists(src_efi):
-                # dirs_exist_ok empêche l'erreur d'écrasement en cas de réinstallation
                 shutil.copytree(src_efi, dest_root, dirs_exist_ok=True)
 
-            # Configuration pour chaîner vers le grub wubildr
             wubildr_cfg_src = join_path(self.info.root_dir, 'winboot', 'wubildr.cfg')
             if os.path.isfile(wubildr_cfg_src):
                 shutil.copyfile(wubildr_cfg_src, join_path(dest_root, 'wubildr.cfg'))
@@ -1646,7 +1620,6 @@ class Backend(object):
             efi_prefix = ('/' + dest_root[3:].replace('\\', '/') + '/').replace('//', '/')
             write_file(grub_cfg, f'set prefix="{efi_prefix}"\nconfigfile "${{prefix}}wubildr.cfg"\n')
 
-            # Gestion de l'architecture pour charger le bon binaire EFI
             if self.get_efi_arch(associated_task, esp_drive) == "ia32":
                 efi_binary = 'grubia32.efi'
             else:
@@ -1654,7 +1627,6 @@ class Backend(object):
             
             efi_relative_path = f"\\EFI\\{target_name}\\{efi_binary}"
 
-            # Déclaration BCD (avec vérification anti-doublon)
             guid = self._find_existing_bcd_guid(bcdedit, efi_relative_path)
             if guid:
                 log.info(f"Existing BCD entry found ({guid}). Updating...")
@@ -1669,7 +1641,7 @@ class Backend(object):
             commands = [
                 [bcdedit, '/set', guid, 'device', f'partition={esp_drive}'],
                 [bcdedit, '/set', guid, 'path', efi_relative_path],
-                [bcdedit, '/set', guid, 'locale', 'fr-FR'],
+                [bcdedit, '/set', guid, 'locale', self.info.locale],
                 [bcdedit, '/set', guid, 'inherit', '{bootloadersettings}'],
                 [bcdedit, '/displayorder', guid, '/addlast'],
                 [bcdedit, '/set', '{fwbootmgr}', 'displayorder', guid, '/addlast'],
@@ -1685,7 +1657,12 @@ class Backend(object):
 
         finally:
             if need_unmount:
-                subprocess.run(['mountvol', esp_drive, '/D'], capture_output=True)
+                log.debug(f"Unmounting ESP from {esp_drive}")
+                res = subprocess.run(['mountvol', esp_drive, '/D'], capture_output=True, text=True)
+                if res.returncode != 0:
+                    err = (res.stderr or res.stdout or '').strip().lower()
+                    if 'not found' not in err and 'introuvable' not in err:
+                        log.debug(f"Failed to unmount ESP {esp_drive}: {res.stderr or res.stdout}")
 
     def get_efi_arch(self, associated_task, efidrive):
         mapping = {
@@ -1713,7 +1690,7 @@ class Backend(object):
             log.error(err)
         finally:
             if need_unmount:
-                subprocess.run(['mountvol', esp_drive, '/d'], capture_output=True)
+                subprocess.run(['mountvol', esp_drive, '/D'], capture_output=True)
 
     # ── Uninstallation ───────────────────────────────────────────────────────
 
