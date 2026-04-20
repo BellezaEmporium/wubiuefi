@@ -202,7 +202,7 @@ class BackendTests(unittest.TestCase):
         self.assertTrue(ai['identity']['password'].startswith('$6$'))
         early = ai['early-commands'][0]
         self.assertEqual(early[0], '/bin/sh')
-        self.assertTrue(early[1].startswith('/isodevice/'))
+        self.assertTrue(early[1].startswith('/host/'))
         self.assertNotIn('$(', early[1])
         self.assertEqual(early[2], backend.unix_path(self.temp_target_dir))
 
@@ -228,7 +228,7 @@ class BackendTests(unittest.TestCase):
         with open(grub_cfg, 'r') as f:
             content = f.read()
 
-        self.assertIn('ds=nocloud\\;s=file:///../isodevice', content)
+        self.assertIn('ds=nocloud\\;s=file:///host/', content)
         self.assertIn('/autoinstall/', content)
         self.assertNotIn('$(custom_installation_dir)', content)
 

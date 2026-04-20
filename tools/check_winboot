@@ -14,11 +14,10 @@ install_pkg() {
     fi
 }
 
-test -e /usr/lib/grub/i386-pc/moddep.lst    || install_pkg grub-pc-bin
-test -e /usr/lib/grub/x86_64-efi/moddep.lst || install_pkg grub-efi-amd64-bin
-test -e /usr/lib/grub/i386-efi/moddep.lst   || install_pkg grub-efi-ia32-bin
 test -e /usr/lib/shim/shimx64.efi.signed \
     -o -e /usr/lib/shim/shim.efi.signed     || install_pkg shim-signed
+test -e /usr/lib/grub/x86_64-efi-signed/grubx64.efi.signed || install_pkg grub-efi-amd64-signed
+test -e /usr/lib/grub/i386-efi/moddep.lst   || install_pkg grub-efi-ia32-bin
 
 WINBOOT_EFI="build/winboot/EFI"
 mkdir -p "$WINBOOT_EFI"
@@ -35,27 +34,35 @@ for candidate in \
     fi
 done
 
-[ -e "$WINBOOT_EFI/shimx64.efi" ] || { echo "Error: shim introuvable"; exit 1; }
+[ -e "$WINBOOT_EFI/shimx64.efi" ] || { echo "Error: shim not found"; exit 1; }
 
+# --- x86_64  ---
+if [ -e /usr/lib/grub/x86_64-efi-signed/grubx64.efi.signed ]; then
+    cp /usr/lib/grub/x86_64-efi-signed/grubx64.efi.signed "$WINBOOT_EFI/grubx64.efi"
+    echo "Copied signed grubx64.efi"
+else
+    echo "Error: grub-efi-amd64-signed not found"; exit 1
+fi
+
+# --- ia32 ---
 GRUB_MODULES="part_gpt part_msdos fat ntfs ext2 loopback \
     linux boot search search_fs_uuid configfile \
     normal echo test sleep gfxterm font"
 
-# --- x86_64 ---
-grub-mkimage -O x86_64-efi -p "/EFI/wubildr" \
-    -o "$WINBOOT_EFI/grubx64.efi" $GRUB_MODULES
-echo "Built grubx64.efi"
+if [ -e /usr/lib/grub/i386-efi/moddep.lst ]; then
+    grub-mkimage -O i386-efi -p "/EFI/wubildr" \
+        -o "$WINBOOT_EFI/grubia32.efi" $GRUB_MODULES
+    echo "Built grubia32.efi (unsigned, ia32 Secure Boot rare in practice)"
+fi
 
-# --- ia32 ---
-grub-mkimage -O i386-efi -p "/EFI/wubildr" \
-    -o "$WINBOOT_EFI/grubia32.efi" $GRUB_MODULES
-echo "Built grubia32.efi"
-
-# --- arm64 (si disponible) ---
-if [ -e /usr/lib/grub/arm64-efi/moddep.lst ]; then
+# --- arm64 (signed if available, fallback to build) ---
+if [ -e /usr/lib/grub/arm64-efi-signed/grubaa64.efi.signed ]; then
+    cp /usr/lib/grub/arm64-efi-signed/grubaa64.efi.signed "$WINBOOT_EFI/grubaa64.efi"
+    echo "Copied signed grubaa64.efi"
+elif [ -e /usr/lib/grub/arm64-efi/moddep.lst ]; then
     grub-mkimage -O arm64-efi -p "/EFI/wubildr" \
         -o "$WINBOOT_EFI/grubaa64.efi" $GRUB_MODULES
-    echo "Built grubaa64.efi"
+    echo "Built grubaa64.efi (unsigned)"
 fi
 
 echo "EFI binaries ready in $WINBOOT_EFI"

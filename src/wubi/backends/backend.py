@@ -1618,7 +1618,10 @@ class Backend(object):
 
             grub_cfg = join_path(dest_root, 'grub.cfg')
             efi_prefix = ('/' + dest_root[3:].replace('\\', '/') + '/').replace('//', '/')
-            write_file(grub_cfg, f'set prefix="{efi_prefix}"\nconfigfile "${{prefix}}wubildr.cfg"\n')
+            write_file(grub_cfg, 
+                f'search --no-floppy --file --set=root {efi_prefix}wubildr.cfg\n'
+                f'configfile {efi_prefix}wubildr.cfg\n'
+            )
 
             if self.get_efi_arch(associated_task, esp_drive) == "ia32":
                 efi_binary = 'grubia32.efi'
