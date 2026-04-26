@@ -18,6 +18,7 @@ test -e /usr/lib/shim/shimx64.efi.signed \
     -o -e /usr/lib/shim/shim.efi.signed     || install_pkg shim-signed
 test -e /usr/lib/grub/x86_64-efi-signed/grubx64.efi.signed || install_pkg grub-efi-amd64-signed
 test -e /usr/lib/grub/i386-efi/moddep.lst   || install_pkg grub-efi-ia32-bin
+test -e /usr/lib/grub/x86_64-efi/moddep.lst || install_pkg grub-efi-amd64-bin
 
 WINBOOT_EFI="build/winboot/EFI"
 mkdir -p "$WINBOOT_EFI"
@@ -37,17 +38,31 @@ done
 [ -e "$WINBOOT_EFI/shimx64.efi" ] || { echo "Error: shim not found"; exit 1; }
 
 # --- x86_64  ---
-if [ -e /usr/lib/grub/x86_64-efi-signed/grubx64.efi.signed ]; then
+GRUB_MODULES_X64="part_gpt part_msdos fat ntfs ext2 loopback \
+    linux boot search search_fs_file search_fs_uuid search_label configfile \
+    normal echo test sleep probe ls cat memdisk tar \
+    all_video gfxterm gfxterm_background font jpeg png tga \
+    reboot halt"
+
+if [ -e /usr/lib/grub/x86_64-efi/moddep.lst ]; then
+    grub-mkimage -O x86_64-efi -p "" \
+        -o "$WINBOOT_EFI/grubx64.efi" $GRUB_MODULES_X64
+    echo "Built grubx64.efi with full module set (unsigned)"
+elif [ -e /usr/lib/grub/x86_64-efi-signed/grubx64.efi.signed ]; then
     cp /usr/lib/grub/x86_64-efi-signed/grubx64.efi.signed "$WINBOOT_EFI/grubx64.efi"
-    echo "Copied signed grubx64.efi"
+    echo "WARNING: Using signed grubx64.efi — search_fs_file may not be embedded"
+    echo "         Install grub-efi-amd64-bin for a fully functional build"
 else
-    echo "Error: grub-efi-amd64-signed not found"; exit 1
+    echo "Error: no x86_64 GRUB binary available"
+    echo "       sudo apt install grub-efi-amd64-bin grub-efi-amd64-signed"
+    exit 1
 fi
 
 # --- ia32 ---
 GRUB_MODULES="part_gpt part_msdos fat ntfs ext2 loopback \
-    linux boot search search_fs_uuid configfile \
-    normal echo test sleep gfxterm font"
+    linux boot search search_fs_file search_fs_uuid search_label configfile \
+    normal echo test sleep probe ls cat \
+    all_video gfxterm font"
 
 if [ -e /usr/lib/grub/i386-efi/moddep.lst ]; then
     grub-mkimage -O i386-efi -p "/EFI/wubildr" \

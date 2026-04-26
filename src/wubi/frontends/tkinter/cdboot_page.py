@@ -16,11 +16,9 @@ class CDBootPage(Page):
                   wraplength=440).pack(pady=8)
 
         ttk.Separator(self).pack(fill=X, side=BOTTOM, pady=(4, 0))
-        nav = ttk.Frame(self, padding=(8, 6))
-        nav.pack(side=BOTTOM, fill=X)
-        ttk.Button(nav, text=_("Cancel"), command=self.on_cancel,
+        ttk.Button(self.nav, text=_("Cancel"), command=self.on_cancel,
                    bootstyle="secondary-outline").pack(side=RIGHT, padx=8)
-        ttk.Button(nav, text=_("Next >>"), command=self.on_next,
+        ttk.Button(self.nav, text=_("Next >>"), command=self.on_next,
                    bootstyle="primary").pack(side=RIGHT, padx=4)
 
     def on_cancel(self): self.frontend.cancel()

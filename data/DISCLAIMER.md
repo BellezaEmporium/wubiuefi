@@ -1,0 +1,1 @@
+All files related to GRUB and WubiUEFI need to be in LF format, NOT in CRLF format. This is because GRUB does not support CRLF line endings, and using them can cause issues with booting. Please ensure that all files are saved with LF line endings to avoid any problems.

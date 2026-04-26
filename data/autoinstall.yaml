@@ -1,41 +1,28 @@
-# wubiuefi Subiquity installation parameters for Ubuntu 24.04 and later.
-# most of it is taken from the official Ubuntu installation documentation
-# see https://canonical-subiquity.readthedocs-hosted.com/en/latest/reference/autoinstall-reference.html
-# for more details on the parameters.
+#cloud-config
 autoinstall:
   version: 1
-
   locale: $(locale)
-
   keyboard:
     layout: $(keyboard_layout)
     variant: $(keyboard_variant)
-
   timezone: $(timezone)
-
   updates: no
-
   identity:
     realname: $(realname)
     hostname: $(hostname)
     username: $(username)
     password: $(hashed_password)
-
   ssh:
     install-server: false
-
   source:
     id: $(source_id)
     search_drivers: true
-
   storage:
     layout:
       name: direct
       ptable: gpt
-
   drivers:
     install: true
-
   apt:
     geoip: true
     mirror-selection:
@@ -43,11 +30,9 @@ autoinstall:
         - country-mirror
         - uri: "http://archive.ubuntu.com/ubuntu"
           arches: [amd64]
-
   error-commands:
     - tar -czf /installer-logs.tar.gz /var/log/installer/
-
   shutdown: reboot
-
   early-commands:
-    - ["/bin/sh", "/cdrom/ubuntu/install/custom-installation/hooks/early-command.sh", "/ubuntu/install/custom-installation"]
+    - ["/bin/sh", "/host$(custom_installation_dir)/hooks/early-command.sh",
+       "$(custom_installation_dir)"]

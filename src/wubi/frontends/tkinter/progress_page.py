@@ -9,6 +9,8 @@ import logging
 log = logging.getLogger("TkProgressPage")
 
 class ProgressPage(Page):
+    page_title = _("Installing…")
+    page_subtitle = _("Please wait while files are copied")
 
     def on_init(self):
         self._title_var = ttk.StringVar(value=_("Installing..."))
@@ -17,36 +19,30 @@ class ProgressPage(Page):
                   bootstyle="primary").pack(pady=(16, 4))
         ttk.Label(self, text=_("Please wait")).pack()
 
-        body = ttk.Frame(self)
-        body.pack(fill=BOTH, expand=YES, padx=24, pady=12)
-
         self._task_var = ttk.StringVar()
-        ttk.Label(body, textvariable=self._task_var, anchor="w").pack(fill=X)
-        self.progressbar = ttk.Progressbar(body, maximum=100,
+        ttk.Label(self.body, textvariable=self._task_var, anchor="w").pack(fill=X)
+        self.progressbar = ttk.Progressbar(self.body, maximum=100,
                                            bootstyle="success-striped")
-        self.progressbar.pack(fill=X, pady=4)
+        self.progressbar.pack(fill=X, pady=6)
 
         self._subtask_var = ttk.StringVar()
-        self._subtask_label = ttk.Label(body, textvariable=self._subtask_var,
+        self._subtask_label = ttk.Label(self.body, textvariable=self._subtask_var,
                                         anchor="w", bootstyle="secondary")
         self._subtask_label.pack(fill=X)
-        self.subprogressbar = ttk.Progressbar(body, maximum=100,
+        self.subprogressbar = ttk.Progressbar(self.body, maximum=100,
                                               bootstyle="info-striped")
         self.subprogressbar.pack(fill=X, pady=4)
         self._subtask_label.pack_forget()
         self.subprogressbar.pack_forget()
 
         ttk.Separator(self).pack(fill=X, side=BOTTOM, pady=(4, 0))
-        nav = ttk.Frame(self, padding=(8, 6))
-        nav.pack(side=BOTTOM, fill=X)
-        ttk.Button(nav, text=_("Cancel"), command=self.on_cancel,
+        ttk.Button(self.nav, text=_("Cancel"), command=self.on_cancel,
                    bootstyle="danger-outline").pack(side=RIGHT, padx=8)
 
     def on_progress(self, task, message=None):
-        """Callback appelé depuis le thread des tâches — doit passer par after()."""
         self.frontend._ui_queue.put(task)
 
-    def _update(self, task):
+    def _update(self, task) -> None:
         tasklist = task.get_root()
         self._title_var.set(tasklist.description)
         self.progressbar["value"] = int(100 * tasklist.get_percent_of_tasks_completed())
@@ -55,6 +51,7 @@ class ProgressPage(Page):
         pct = task.get_percent_completed()
         if pct > 0:
             self.subprogressbar["value"] = int(100 * pct)
+            self.set_title(_("Installing…"), tasklist.description)
             remaining = task.estimate_remaining_time()[0]
             self._subtask_var.set(_("Remaining time approximately %s") % remaining)
             self._subtask_label.pack(fill="x")

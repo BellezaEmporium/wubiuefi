@@ -23,9 +23,7 @@ class CDFinishPage(Page):
         ttk.Radiobutton(self, text=_("I want to manually reboot later"),
                        variable=self._reboot_var, value="later").pack(anchor="w", padx=60)
 
-        nav = ttk.Frame(self, padding=(8, 6))
-        nav.pack(side=BOTTOM, fill=X)
-        ttk.Button(nav, text=_("Finish"), command=self.on_finish, bootstyle="primary").pack(side=RIGHT, padx=8, pady=8)
+        ttk.Button(self.nav, text=_("Finish"), command=self.on_finish, bootstyle="primary").pack(side=RIGHT, padx=8, pady=8)
 
     def on_finish(self):
         if self._reboot_var.get() == "now":

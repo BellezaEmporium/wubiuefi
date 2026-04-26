@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from pathlib import Path
 import sys
 import os
 import platform
@@ -8,18 +9,18 @@ import subprocess
 
 def get_base_path():
     if hasattr(sys, '_MEIPASS'):
-        tmp = tempfile.mkdtemp(prefix="wubi_")
+        tmp = Path(tempfile.mkdtemp(prefix="wubi_"))
         for folder in ('winboot', 'data', 'translations', 'bin'):
-            src = os.path.join(sys._MEIPASS, folder) # type: ignore | typical for PyInstaller
-            if os.path.isdir(src):
-                shutil.copytree(src, os.path.join(tmp, folder))
+            src = str(Path(sys._MEIPASS) / folder) # type: ignore | typical for PyInstaller
+            if Path(src).is_dir():
+                shutil.copytree(src, str(tmp / folder))
         atexit.register(shutil.rmtree, tmp, True)
-        return tmp
-    return os.path.abspath(os.path.dirname(__file__))
+        return str(tmp)
+    return str(Path(__file__).parent.resolve())
 
 
 root_dir = get_base_path()
-lib_dir = os.path.join(root_dir, 'lib')
+lib_dir = str(Path(root_dir) / 'lib')
 sys.path.insert(0, lib_dir)
 
 

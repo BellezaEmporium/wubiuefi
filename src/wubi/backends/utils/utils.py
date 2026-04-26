@@ -18,6 +18,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+from pathlib import Path
 import sys
 import os
 import hashlib
@@ -32,7 +33,7 @@ def join_path(*args):
     if args and args[0] and args[0][-1] == ":":
         args = list(args)
         args[0] = args[0] + os.path.sep
-    return os.path.abspath(os.path.join(*args))
+    return str(Path(*args).resolve())
 
 def spawn_command(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                   stderr=subprocess.PIPE, show_window=False):
@@ -102,9 +103,9 @@ def hash_password(password: str) -> str:
     return _sha512_crypt_pure(password)  # type: ignore
 
 def get_file_hash(file_path, hash_name='md5', associated_task=None):
-    if not file_path or not os.path.isfile(file_path):
+    if not file_path or not Path(file_path).is_file():
         return
-    file_size_mb = os.path.getsize(file_path) / (1024 ** 2)
+    file_size_mb = Path(file_path).stat().st_size / (1024 ** 2)
     if associated_task:
         associated_task.unit = "MB"
         associated_task.size = file_size_mb
@@ -141,8 +142,8 @@ def copy_file(source, target, associated_task=None):
     Copy file with progress report
     '''
     file_size = None
-    if os.path.isfile(source):
-        file_size = os.path.getsize(source)
+    if Path(source).is_file():
+        file_size = Path(source).stat().st_size
     elif os.path.ismount(source):
         if sys.platform.startswith("win"):
             file_size = get_drive_space(source)
@@ -172,7 +173,7 @@ def reverse_list(lst):
     return lst
 
 def read_file(file_path, binary=False):
-    if not file_path or not os.path.isfile(file_path):
+    if not file_path or not Path(file_path).is_file():
         return
     f = None
     if binary:
@@ -183,13 +184,11 @@ def read_file(file_path, binary=False):
     f.close()
     return content
 
-def write_file(file_path, str):
-    if not file_path:
-        return
-    f = None
-    f = open(file_path, 'w')
-    f.write(str)
-    f.close()
+def write_file(path, content, mode='w', encoding='utf-8'):
+    if isinstance(content, str):
+        content = content.replace('\r\n', '\n').replace('\r', '\n')
+    with open(path, mode, encoding=encoding, newline='\n') as f:
+        f.write(content)
 
 def replace_line_in_file(file_path, old_line, new_line):
     if new_line[-1] != "\n":
@@ -223,7 +222,7 @@ def remove_line_in_file(file_path, rm_line, ignore_case=False):
     f.close()
 
 def find_line_in_file(file_path, text, endswith=False):
-    if not file_path or not os.path.isfile(file_path):
+    if not file_path or not Path(file_path).is_file():
         return
     if endswith and text[-1] != "\n":
         text += "\n"
@@ -247,9 +246,9 @@ def unix_path(path):
 def rm_tree(target):
     if not os.path.exists(target):
         return
-    if os.path.isfile(target):
-            os.unlink(target)
-    elif not os.path.isdir(target):
+    if Path(target).is_file():
+            Path(target).unlink()
+    elif not Path(target).is_dir():
         return
     if sys.platform.startswith("win"):
         for dir, subdirs, files in os.walk(target):

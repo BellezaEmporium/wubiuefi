@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import re
 import logging
 import shutil
@@ -13,14 +14,14 @@ def _find_aria2c(root_dir=None):
     candidates = []
     if root_dir:
         candidates += [
-            os.path.join(root_dir, 'blobs', 'aria2c.exe'),
-            os.path.join(root_dir, 'bin', 'aria2c.exe'),
+            str(Path(root_dir) / 'blobs' / 'aria2c.exe'),
+            str(Path(root_dir) / 'bin' / 'aria2c.exe'),
         ]
     system = shutil.which('aria2c') or shutil.which('aria2c.exe')
     if system:
         candidates.append(system)
     for path in candidates:
-        if path and os.path.isfile(path):
+        if path and Path(path).is_file():
             return path
     raise FileNotFoundError(
         "aria2c not found. Place aria2c.exe in the blobs/ or bin/ directory."
@@ -108,15 +109,15 @@ def download(torrent_path_or_url, save_dir, associated_task=None,
     if proc.returncode != 0:
         raise Exception("aria2c failed with code %d" % proc.returncode)
 
-    if not downloaded_file or not os.path.isfile(downloaded_file):
+    if not downloaded_file or not Path(downloaded_file).is_file():
         # Search for the file in save_dir if aria2c did not log the path
         files = [
-            os.path.join(save_dir, f)
+            str(Path(save_dir) / f)
             for f in os.listdir(save_dir)
             if not f.endswith('.aria2')
         ]
         if files:
-            downloaded_file = max(files, key=os.path.getmtime)
+            downloaded_file = str(max(files, key=os.path.getmtime))
         else:
             raise Exception("Fichier téléchargé introuvable dans %s" % save_dir)
 

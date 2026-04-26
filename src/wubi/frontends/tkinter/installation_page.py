@@ -2,6 +2,9 @@ import re
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from gettext import gettext as _
+import gettext
+import logging
+
 from .page import Page
 from wubi.backends.mappings import (
     reserved_usernames,
@@ -9,78 +12,134 @@ from wubi.backends.mappings import (
     language2lang_country,
     lang_country2language,
 )
-import logging, gettext
 
 log = logging.getLogger("TkInstallationPage")
 reserved_usernames = [str(n) for n in reserved_usernames]
 re_username_first = re.compile(r"^[a-z]")
 re_username = re.compile(r"[a-z][-a-z0-9_]*$")
 
+
 class InstallationPage(Page):
 
-    def on_init(self):
-        ttk.Label(self, text=_("Installing"),
-                  font=("Segoe UI", 13, "bold"),
-                  bootstyle="primary").pack(pady=(16, 0))
-        ttk.Label(self, text=_("Please select username and password for the new account")).pack()
+    def on_init(self) -> None:
+        ttk.Label(
+            self,
+            text=_("Installing"),
+            font=("Segoe UI", 13, "bold"),
+            bootstyle="primary",
+        ).pack(pady=(16, 0))
+        ttk.Label(
+            self,
+            text=_("Please select username and password for the new account"),
+        ).pack(pady=(0, 8))
 
         form = ttk.Frame(self)
-        form.pack(fill=BOTH, expand=YES, padx=24, pady=4)
+        form.pack(fill=BOTH, expand=YES, padx=32, pady=4)
+        form.columnconfigure(0, weight=1)
+        form.columnconfigure(1, weight=1)
 
-        # Left column
-        ttk.Label(form, text=_("Installation drive:"), anchor="w").grid(row=0, column=0, sticky="w")
+        # ── Left column ───────────────────────────────────────────
+        ttk.Label(form, text=_("Installation drive:"), anchor="w").grid(
+            row=0, column=0, sticky="w", pady=(0, 2)
+        )
         self._drive_var = ttk.StringVar()
-        self.target_drive_list = ttk.Combobox(form, textvariable=self._drive_var, state="readonly", width=22)
-        self.target_drive_list.grid(row=1, column=0, sticky="w", pady=(0, 4))
-        self.target_drive_list.bind("<<ComboboxSelected>>", lambda e: self.on_drive_change())
+        self.target_drive_list = ttk.Combobox(
+            form, textvariable=self._drive_var, state="readonly", width=22
+        )
+        self.target_drive_list.grid(row=1, column=0, sticky="ew", pady=(0, 8))
+        self.target_drive_list.bind(
+            "<<ComboboxSelected>>", lambda e: self.on_drive_change()
+        )
 
-        ttk.Label(form, text=_("Installation size:"), anchor="w").grid(row=2, column=0, sticky="w")
+        ttk.Label(form, text=_("Installation size:"), anchor="w").grid(
+            row=2, column=0, sticky="w", pady=(0, 2)
+        )
         self._size_var = ttk.StringVar()
-        self.size_list = ttk.Combobox(form, textvariable=self._size_var, state="readonly", width=22)
-        self.size_list.grid(row=3, column=0, sticky="w", pady=(0, 4))
-        self.size_list.bind("<<ComboboxSelected>>", lambda e: self.on_size_change())
+        self.size_list = ttk.Combobox(
+            form, textvariable=self._size_var, state="readonly", width=22
+        )
+        self.size_list.grid(row=3, column=0, sticky="ew", pady=(0, 8))
+        self.size_list.bind(
+            "<<ComboboxSelected>>", lambda e: self.on_size_change()
+        )
 
-        ttk.Label(form, text=_("Desktop environment:"), anchor="w").grid(row=4, column=0, sticky="w")
+        ttk.Label(form, text=_("Desktop environment:"), anchor="w").grid(
+            row=4, column=0, sticky="w", pady=(0, 2)
+        )
         self._distro_var = ttk.StringVar()
-        self.distro_list = ttk.Combobox(form, textvariable=self._distro_var, state="readonly", width=22)
-        self.distro_list.grid(row=5, column=0, sticky="w", pady=(0, 4))
-        self.distro_list.bind("<<ComboboxSelected>>", lambda e: self.on_distro_change())
+        self.distro_list = ttk.Combobox(
+            form, textvariable=self._distro_var, state="readonly", width=22
+        )
+        self.distro_list.grid(row=5, column=0, sticky="ew", pady=(0, 8))
+        self.distro_list.bind(
+            "<<ComboboxSelected>>", lambda e: self.on_distro_change()
+        )
 
-        # Right column
-        ttk.Label(form, text=_("Language:"), anchor="w").grid(row=0, column=1, sticky="w", padx=(20, 0))
+        # ── Right column ──────────────────────────────────────────
+        ttk.Label(form, text=_("Language:"), anchor="w").grid(
+            row=0, column=1, sticky="w", padx=(20, 0), pady=(0, 2)
+        )
         self._lang_var = ttk.StringVar()
-        self.language_list = ttk.Combobox(form, textvariable=self._lang_var, state="readonly", width=22)
-        self.language_list.grid(row=1, column=1, sticky="w", padx=(20, 0), pady=(0, 4))
-        self.language_list.bind("<<ComboboxSelected>>", lambda e: self.on_language_change())
+        self.language_list = ttk.Combobox(
+            form, textvariable=self._lang_var, state="readonly", width=22
+        )
+        self.language_list.grid(row=1, column=1, sticky="ew", padx=(20, 0), pady=(0, 8))
+        self.language_list.bind(
+            "<<ComboboxSelected>>", lambda e: self.on_language_change()
+        )
 
-        ttk.Label(form, text=_("Username:"), anchor="w").grid(row=2, column=1, sticky="w", padx=(20, 0))
+        ttk.Label(form, text=_("Username:"), anchor="w").grid(
+            row=2, column=1, sticky="w", padx=(20, 0), pady=(0, 2)
+        )
         username = self.info.host_username or ""
         username = re.sub(r"[^-a-z0-9_]", "", username.strip().lower())
         self._username_var = ttk.StringVar(value=username)
-        ttk.Entry(form, textvariable=self._username_var, width=24).grid(row=3, column=1, sticky="w", padx=(20, 0), pady=(0, 4))
+        ttk.Entry(form, textvariable=self._username_var, width=24).grid(
+            row=3, column=1, sticky="ew", padx=(20, 0), pady=(0, 8)
+        )
 
-        ttk.Label(form, text=_("Password:"), anchor="w").grid(row=4, column=1, sticky="w", padx=(20, 0))
+        ttk.Label(form, text=_("Password:"), anchor="w").grid(
+            row=4, column=1, sticky="w", padx=(20, 0), pady=(0, 2)
+        )
         self._pw1_var = ttk.StringVar(value=self.info.password or "")
-        self._pw2_var = ttk.StringVar(value=self.info.password or "")
-        ttk.Entry(form, textvariable=self._pw1_var, show="*", width=24).grid(row=5, column=1, sticky="w", padx=(20, 0))
-        ttk.Entry(form, textvariable=self._pw2_var, show="*", width=24).grid(row=6, column=1, sticky="w", padx=(20, 0), pady=(0, 4))
+        ttk.Entry(form, textvariable=self._pw1_var, show="*", width=24).grid(
+            row=5, column=1, sticky="ew", padx=(20, 0), pady=(0, 4)
+        )
 
+        ttk.Label(form, text=_("Confirm password:"), anchor="w").grid(
+            row=6, column=1, sticky="w", padx=(20, 0), pady=(0, 2)
+        )
+        self._pw2_var = ttk.StringVar(value=self.info.password or "")
+        ttk.Entry(form, textvariable=self._pw2_var, show="*", width=24).grid(
+            row=7, column=1, sticky="ew", padx=(20, 0), pady=(0, 8)
+        )
+
+        # ── Distro info strip ─────────────────────────────────────
+        self._distro_info_var = ttk.StringVar()
+        ttk.Label(
+            self,
+            textvariable=self._distro_info_var,
+            bootstyle="secondary",
+            font=("Segoe UI", 9),
+            anchor="w",
+        ).pack(fill=X, padx=32, pady=(0, 4))
+
+        # ── Error label ───────────────────────────────────────────
         self._error_var = ttk.StringVar()
         ttk.Label(self, textvariable=self._error_var, bootstyle="danger").pack()
 
-        ttk.Separator(self).pack(fill=X, side=BOTTOM, pady=(4, 0))
-        nav = ttk.Frame(self, padding=(8, 6))
-        nav.pack(side=BOTTOM, fill=X)
-        ttk.Button(nav, text=_("Cancel"), command=self.on_cancel,
+        # ── Navigation bar ────────────────────────────────────────
+        ttk.Button(self.nav, text=_("Cancel"), command=self.on_cancel,
                    bootstyle="secondary-outline").pack(side=RIGHT, padx=8)
-        ttk.Button(nav, text=_("Install"), command=self.on_install,
+        ttk.Button(self.nav, text=_("Install"), command=self.on_install,
                    bootstyle="success").pack(side=RIGHT, padx=4)
 
         self.populate_language_list()
         self.populate_distro_list()
 
+    # ── Population helpers ────────────────────────────────────────────
 
-    def populate_language_list(self):
+    def populate_language_list(self) -> None:
         languages = sorted(language2lang_country.keys())
         self.language_list["values"] = languages
         language = lang_country2language.get(self.info.language) or self.info.windows_language
@@ -88,54 +147,82 @@ class InstallationPage(Page):
             language = lang_country2language.get("en_US", "")
         self._lang_var.set(language)
 
-    def populate_distro_list(self):
-        distros = []
+    def populate_distro_list(self) -> None:
+        distros: list[str] = []
         for src in [self.info.cd_distro, self.info.iso_distro]:
             if src and src.name not in distros:
                 distros.append(src.name)
         for d in self.info.distros:
             if d.name not in distros:
                 distros.append(d.name)
-        log.debug("populate_distro_list: distros=%s" % distros)
-        log.debug("populate_distro_list: distros_dict keys=%s" % list(self.info.distros_dict.keys())[:5])
+        log.debug(f"populate_distro_list: distros={distros}")
         if not distros:
             raise RuntimeError("No distributions are available.")
         self.distro_list["values"] = distros
         self._distro_var.set(distros[0])
         self.on_distro_change()
 
-    def populate_drive_list(self):
-        min_mb = self.info.distro.min_disk_space_mb + self.info.distro.max_iso_size / 1024**2 + 100
-        entries, self._drive_objs = [], []
+    def populate_drive_list(self) -> None:
+        min_mb = (
+            self.info.distro.min_disk_space_mb
+            + self.info.distro.max_iso_size / 1024**2
+            + 100
+        )
+        entries: list[str] = []
+        self._drive_objs: list = []
         for drive in self.info.drives:
             if drive.type not in ("removable", "hd"):
                 continue
             mb = int(drive.free_space_mb / 1024) * 1000
             if self.info.skip_size_check or mb > min_mb:
-                label = "%s (%sGB free)" % (drive.path, mb // 1000)
+                label = f"{drive.path} ({mb // 1000} GB free)"
                 entries.append(label)
                 self._drive_objs.append(drive)
-        self.target_drive_list["values"] = entries
-        if entries:
-            self._drive_var.set(entries[0])
-            self.on_drive_change()
 
-    def populate_size_list(self):
+        self.target_drive_list["values"] = entries
+
+        if not entries:
+            self._error_var.set(
+                _("No eligible drives found. Free up space or connect a drive.")
+            )
+            self._drive_var.set("")
+            self.size_list["values"] = []
+            self._size_var.set("")
+            return
+
+        self._error_var.set("")
+        self._drive_var.set(entries[0])
+        self.on_drive_change()
+
+    def populate_size_list(self) -> None:
         drive = self._get_selected_drive()
-        self._sizes = []
+        self._sizes: list[int] = []
         if drive is None:
             return
         for i in list(range(1, 33)) + [64, 128, 256, 512]:
             if self.info.skip_size_check or i * 1000 >= self.info.distro.min_disk_space_mb:
-                if i * 1000 + self.info.distro.max_iso_size / 1024**2 + 100 <= drive.free_space_mb:
+                if (
+                    i * 1000 + self.info.distro.max_iso_size / 1024**2 + 100
+                    <= drive.free_space_mb
+                ):
                     self._sizes.append(i)
-        labels = [_("%sGB") % i for i in self._sizes]
-        self.size_list["values"] = labels
-        if labels:
-            mid = labels[len(labels) // 2]
-            self._size_var.set(mid)
-            self.on_size_change()
 
+        labels = [f"{i} GB" for i in self._sizes]
+        self.size_list["values"] = labels
+
+        if not labels:
+            self._error_var.set(
+                _("Not enough free space on the selected drive.")
+            )
+            self._size_var.set("")
+            return
+
+        self._error_var.set("")
+        mid = labels[len(labels) // 2]
+        self._size_var.set(mid)
+        self.on_size_change()
+
+    # ── Event handlers ────────────────────────────────────────────────
 
     def _get_selected_drive(self):
         val = self._drive_var.get()
@@ -144,49 +231,62 @@ class InstallationPage(Page):
                 return self._drive_objs[i] if hasattr(self, "_drive_objs") else None
         return None
 
-    def on_distro_change(self):
+    def on_distro_change(self) -> None:
         name = self._distro_var.get()
         arch = self.info.arch or "amd64"
-        log.info("on_distro_change: name=%r arch=%r dict_keys=%s" % (
-            name, arch, list(self.info.distros_dict.keys())[:3]))
+        log.info(f"on_distro_change: name={name!r} arch={arch!r}")
         self.info.distro = (
             self.info.distros_dict.get((name.lower(), arch))
             or self.info.distros_dict.get((name.lower(), "i386"))
             or self.info.distros_dict.get((name.lower(), "amd64"))
         )
-        log.info("on_distro_change: distro=%r" % self.info.distro)
+        log.info(f"on_distro_change: resolved distro={self.info.distro!r}")
 
-        self.frontend.root.title(_("%s Installer") % self.info.distro.name)
+        self.frontend.root.title(f"{self.info.distro.name} — {_('Installer')}")
+
+        # Update the info strip
+        distro = self.info.distro
+        min_gb = round(distro.min_disk_space_mb / 1000, 1)
+        iso_mb = round(distro.max_iso_size / 1024**2)
+        self._distro_info_var.set(
+            f"{distro.name}  ·  min {min_gb} GB required  ·  ~{iso_mb} MB download"
+        )
+
         self.populate_drive_list()
 
-    def on_language_change(self):
+    def on_language_change(self) -> None:
         language = self._lang_var.get()
         lc = language2lang_country.get(language)
         if lc:
-            t = gettext.translation(self.info.application_name,
-                                    localedir=self.info.translations_dir,
-                                    languages=[lc], fallback=True)
+            t = gettext.translation(
+                self.info.application_name,
+                localedir=self.info.translations_dir,
+                languages=[lc],
+                fallback=True,
+            )
             t.install(names=["ngettext"])
 
-    def on_drive_change(self):
+    def on_drive_change(self) -> None:
         self.info.target_drive = self._get_selected_drive()
         self.populate_size_list()
 
-    def on_size_change(self):
-        val = self._size_var.get()
-        if val:
-            self.info.installation_size_mb = int(val.rstrip("GB")) * 1000
+    def on_size_change(self) -> None:
+        idx = self.size_list.current()
+        if idx >= 0 and hasattr(self, "_sizes") and self._sizes:
+            self.info.installation_size_mb = self._sizes[idx] * 1000
 
-    def on_cancel(self):
+    def on_cancel(self) -> None:
         self.frontend.cancel()
 
-    def on_install(self):
+    def on_install(self) -> None:
         drive = self._get_selected_drive()
         username = self._username_var.get().strip()
         pw1 = self._pw1_var.get()
         pw2 = self._pw2_var.get()
         language = language2lang_country.get(self._lang_var.get())
-        locale = lang_country2linux_locale.get(language) or self.info.locale
+        locale = (
+            lang_country2linux_locale.get(language) if language is not None else None
+        ) or self.info.locale
 
         error = ""
         if not drive:
@@ -198,7 +298,10 @@ class InstallationPage(Page):
         elif not re_username_first.match(username):
             error = _("Your username must start with a lower-case letter.")
         elif not re_username.match(username):
-            error = _("Your username must contain only lower-case letters, numbers, hyphens, and underscores.")
+            error = _(
+                "Your username must contain only lower-case letters, "
+                "numbers, hyphens, and underscores."
+            )
         elif username in reserved_usernames:
             error = _("The selected username is reserved, please select a different one.")
         elif not pw1 or " " in pw1:

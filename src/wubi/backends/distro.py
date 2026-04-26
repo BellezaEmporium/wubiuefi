@@ -19,19 +19,40 @@
 #
 
 import os
+from pathlib import Path
 from .utils import read_file
 import logging
 import re
 from typing import Union
 
 log = logging.getLogger('Distro')
-disk_info_re = re.compile(
+# Ubuntu: "Ubuntu 24.04 LTS "Noble Numbat" - Release amd64 (20240425)"
+_ubuntu_re = re.compile(
     r'(?P<name>[\w\s-]+?) '
     r'(?P<version>\d[\w.]+)'
-    r'(?: LTS)?(?: (?:[\"\(])?(?P<codename>[\w\s-]+)(?:[\"\)])?)? - '
+    r'(?: LTS)?(?: (?:["(])?(?P<codename>[\w\s-]+)(?:[")]))? - '
     r'(?P<subversion>[\D]+)? '
     r'(?P<arch>i386|amd64)(?:[\D]+)?(?P<build>[\d:.-]+)?'
 )
+
+# Debian: "Debian GNU/Linux 12.9.0 "Bookworm" - Official amd64 DVD Binary-1"
+_debian_re = re.compile(
+    r'Debian GNU/Linux '
+    r'(?P<version>\d[\d.]+)'
+    r'(?:\s+"(?P<codename>[^"]+)")? - '
+    r'(?P<subversion>[^a-z]+)?'
+    r'(?P<arch>i386|amd64|arm64)'
+)
+
+# Mint: "Linux Mint 21.3 "Virginia" - Release amd64"
+_mint_re = re.compile(
+    r'Linux Mint '
+    r'(?P<version>\d[\d.]+)'
+    r'(?:\s+"(?P<codename>[^"]+)")? - '
+    r'(?P<subversion>[\w\s]+) '
+    r'(?P<arch>i386|amd64|arm64)'
+)
+
 class Distro(object):
 
     cache = {}
@@ -50,9 +71,9 @@ class Distro(object):
         self.name = name
         self.version = version
         self.arch = arch
-        self.kernel = os.path.normpath(kernel)
-        self.initrd = os.path.normpath(initrd)
-        self.info_file = os.path.normpath(info_file)
+        self.kernel = str(Path(kernel))
+        self.initrd = str(Path(initrd))
+        self.info_file = str(Path(info_file))
         self.size = size and int(size) or 0
         self.min_iso_size = min_iso_size and int(min_iso_size) or 0
         self.max_iso_size = max_iso_size and int(max_iso_size) or 0
@@ -79,15 +100,15 @@ class Distro(object):
             log.debug("Distro %s: unknown isolist fields ignored: %s" % (name, list(kwargs.keys())))
 
     def is_valid_cd(self, cd_path, check_arch):
-        cd_path = os.path.abspath(cd_path)
+        cd_path = str(Path(cd_path).resolve())
         log.debug('  checking whether %s is a valid %s CD' % (cd_path, self.name))
-        if not os.path.isdir(cd_path):
+        if not Path(cd_path).is_dir():
             log.debug('    dir does not exist')
             return False
         required_files = self.get_required_files()
         for file in required_files:
-            file = os.path.join(cd_path, file)
-            if not os.path.isfile(file):
+            file = str(Path(cd_path) / file)
+            if not Path(file).is_file():
                 log.debug('    does not contain %s' % file)
                 return False
         info = self.get_info(cd_path)
@@ -103,17 +124,17 @@ class Distro(object):
 
         TBD: Add more checks
         '''
-        dimage_path = os.path.abspath(dimage_path)
+        dimage_path = str(Path(dimage_path).resolve())
         log.debug('  checking %s diskimage %s' % (self.name, dimage_path))
-        if not os.path.isfile(dimage_path):
+        if not Path(dimage_path).is_file():
             log.debug('    file does not exist')
             return False
         return True
 
     def is_valid_iso(self, iso_path, check_arch):
-        iso_path = os.path.abspath(iso_path)
+        iso_path = str(Path(iso_path).resolve())
         log.debug('  checking %s ISO %s' % (self.name, iso_path))
-        if not os.path.isfile(iso_path):
+        if not Path(iso_path).is_file():
             log.debug('    file does not exist')
             return False
         files = self.backend.get_iso_file_names(iso_path)
@@ -138,17 +159,17 @@ class Distro(object):
             return Distro.cache[(cd_or_iso_path, self.info_file)]
         else:
             Distro.cache[(cd_or_iso_path, self.info_file)] = None
-            if os.path.isfile(cd_or_iso_path):
+            if Path(cd_or_iso_path).is_file():
                 info_file = self.backend.extract_file_from_iso(
                     cd_or_iso_path,
                     self.info_file,
                     output_dir=self.backend.info.temp_dir,
                     overwrite=True)
-            elif os.path.isdir(cd_or_iso_path):
-                info_file = os.path.join(cd_or_iso_path, self.info_file)
+            elif Path(cd_or_iso_path).is_dir():
+                info_file = str(Path(cd_or_iso_path) / self.info_file)
             else:
                 return
-            if not info_file or not os.path.isfile(info_file):
+            if not info_file or not Path(info_file).is_file():
                 return
             try:
                 info = read_file(info_file)
@@ -190,25 +211,26 @@ class Distro(object):
         Parses the file within the ISO
         that contains metadata on the iso
         e.g. .disk/info in Ubuntu
-        Ubuntu 9.04 "Jaunty Jackalope" - Alpha i386 (20090106)
-        Ubuntu 9.04 "Jaunty Jackalope" - Alpha i386 (20090106.1)
-        Ubuntu Split Name 9.04.1 "Jaunty Jackalope" - Final Release i386 (20090106.2)
-        Ubuntu-Studio 12.10 "Quantal Quetzal" - Release amd64 (20121017.1)
         '''
-        log.debug("  parsing info from str=%s" % info)
+        log.debug(f"  parsing info from str={info!r}")
         if not info:
-            return
-        info = disk_info_re.match(info)
-        if info is None:
-            name = ""
-            version = ""
-            subversion = ""
-            arch = self.arch
-            log.debug("  parsed info=None")
-        else:
-            name = info.group('name').replace('-', ' ')
-            version = info.group('version')
-            subversion = info.group('subversion')
-            arch = info.group('arch')
-            log.debug("  parsed info=%s" % info.groupdict())
-        return name, version, subversion, arch
+            return None
+
+        for pattern, distro_name in [
+            (_ubuntu_re, self.name),
+            (_debian_re, "Debian"),
+            (_mint_re,   "Linux Mint"),
+        ]:
+            m = pattern.match(info)
+            if m:
+                groups = m.groupdict()
+                name     = distro_name
+                version  = groups.get("version", "")
+                subver   = groups.get("subversion", "")
+                arch     = groups.get("arch", self.arch)
+                log.debug(f"  parsed info={groups}")
+                return name, version, subver, arch
+
+        # Fallback — unknown format, trust the distro config entirely
+        log.debug("  parse_isoinfo: no pattern matched, using config values")
+        return self.name, self.version, "", self.arch

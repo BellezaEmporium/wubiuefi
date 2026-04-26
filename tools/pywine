@@ -1,2 +1,0 @@
-#!/bin/sh
-exec /cygdrive/c/Python313/python.exe "$@"

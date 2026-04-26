@@ -7,10 +7,19 @@ COPYRIGHTYEAR = 2009
 AUTHOR = Agostino Russo
 EMAIL = agostino.russo@gmail.com
 
-# Adapted from the original Makefile, for Debian under WSL.
-# Adapt the PYTHON_WIN variable to point to your version of Python, be it version whatever.
-# as long as it's Python 3 or later, it should be fine.
-PYTHON_WIN = /mnt/c/Python313/python.exe 
+PYTHON_WIN = /mnt/c/Python313/python.exe
+
+GRUB_MODULES = \
+    part_gpt part_msdos \
+    fat ntfs ext2 \
+    search search_fs_file search_fs_uuid search_label \
+    loopback normal configfile \
+    linux initrd \
+    echo test probe ls cat \
+    memdisk tar \
+    all_video gfxterm gfxterm_background font \
+    jpeg png tga \
+    reboot halt
 
 all: build check
 
@@ -20,16 +29,31 @@ wubi: wubi-pre-build
 	$(PYTHON_WIN) -m PyInstaller --noconfirm wubi.spec
 	mv dist/${PACKAGE}.exe build/${PACKAGE}.exe
 
-wubizip: wubi-pre-build
-	sh -c 'PYTHONPATH=src pypack --verbose --outputdir=build/wubi src/main.py data build/bin build/version.py build/winboot build/translations'
-	cp "$(PYTHON_DLL)" build/wubi
-	sh -c 'cd build && zip -r wubi.zip wubi'
-
-wubi-pre-build: check_winboot winboot2 src/main.py src/wubi/*.py version.py translations
+wubi-pre-build: check_winboot winboot src/main.py src/wubi/*.py version.py translations
 	$(PYTHON_WIN) -m pip install -r requirements.txt
 	rm -rf build/wubi
 	rm -rf build/bin
 	cp -a blobs build/bin
+
+winboot: check_winboot
+	@echo "Verifying EFI binaries..."
+	@for f in shimx64.efi grubx64.efi; do \
+	    if [ ! -f "build/winboot/EFI/$$f" ]; then \
+	        echo "ERROR: build/winboot/EFI/$$f is missing after check_winboot"; \
+	        exit 1; \
+	    fi; \
+	done
+
+	# Copy wubildr.cfg template so modify_EFI_folder can find it at data_dir
+	@if [ -f data/wubildr.cfg ]; then \
+	    cp -f data/wubildr.cfg build/winboot/wubildr.cfg; \
+	    echo "Copied wubildr.cfg -> build/winboot/wubildr.cfg"; \
+	else \
+	    echo "WARNING: data/wubildr.cfg not found — boot config will be missing"; \
+	fi
+
+	@echo "winboot ready:"
+	@ls -lh build/winboot/EFI/
 
 pot:
 	xgettext --default-domain="$(PACKAGE)" --output="po/$(PACKAGE).pot" $(shell find src/wubi -name "*.py" | sort)
@@ -43,21 +67,21 @@ pot:
 
 update-po: pot
 	for i in po/*.po; do \
-		mv $$i $${i}.old; \
-		msgmerge $${i}.old po/wubi.pot | msgattrib --no-obsolete > $$i; \
-		rm $${i}.old; \
+	    mv $$i $${i}.old; \
+	    msgmerge $${i}.old po/wubi.pot | msgattrib --no-obsolete > $$i; \
+	    rm $${i}.old; \
 	done
 
 translations: po/*.po
 	mkdir -p build/translations/
 	@for po in $^; do \
-		language=$$(basename $$po); \
-		language=$${language%%.po}; \
-		target="build/translations/$$language/LC_MESSAGES"; \
-		mkdir -p $$target; \
-		msgfmt \
-			--output="$$target/$(PACKAGE).mo" \
-			"$$po"; \
+	    language=$$(basename $$po); \
+	    language=$${language%%.po}; \
+	    target="build/translations/$$language/LC_MESSAGES"; \
+	    mkdir -p $$target; \
+	    msgfmt \
+	        --output="$$target/$(PACKAGE).mo" \
+	        "$$po"; \
 	done
 
 version.py:
@@ -65,23 +89,12 @@ version.py:
 	sh -c 'echo "revision = $(REVISION)" >> build/version.py'
 	sh -c 'echo "application_name = \"$(PACKAGE)\"" >> build/version.py'
 
-winboot: check_winboot
-	mkdir -p build/winboot/EFI
-	cp -f data/menu.winboot build/winboot/grub.cfg
-	echo "UEFI bootloader ready (no MBR support)"
-
-# Using the UEFI fork by chenall, which is more up-to-date and has better support for modern hardware.
-grub4dos: src/grub4dos/*
-	cp -rf src/grub4dos build
-	sh -c 'cd build/grub4dos && ./configure --enable-preset-menu=../../data/menu.winboot'
-	sh -c 'cd build/grub4dos && make'
-
 runbin: wubi
 	rm -rf build/test
 	mkdir build/test
 	sh -c 'cd build/test && ../wubi --test'
 
-check_winboot: 
+check_winboot:
 	tools/check_winboot
 
 unittest:
@@ -106,4 +119,6 @@ distclean: clean
 	rm -rf data/custom-installation/packages
 	rm -rf shim
 
-.PHONY: all build check wubi wubizip wubi-pre-build pot runpy runbin check_winboot unittest clean distclean translations version.py winboot winboot2 grubutil grub4dos
+.PHONY: all build check wubi wubizip wubi-pre-build pot runpy runbin \
+        check_winboot unittest clean distclean translations version.py \
+        winboot grub4dos update-po

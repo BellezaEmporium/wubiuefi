@@ -21,9 +21,9 @@
 Python wrappers around win32 widgets and window classes
 '''
 
-import os
 import ctypes
 from ctypes import wintypes
+from pathlib import Path
 import win32con
 from . import defs
 
@@ -352,8 +352,8 @@ class Frontend(object):
         self.main_window.set_text(title)
 
     def set_icon(self, icon_path):
-        if icon_path and os.path.isfile(icon_path):
-            self.main_window._icon = ctypes.windll.user32.LoadImageW(win32con.NULL, icon_path, win32con.IMAGE_ICON, 0, 0, win32con.LR_LOADFROMFILE);
+        if icon_path and Path(icon_path).is_file():
+            self.main_window._icon = ctypes.windll.user32.LoadImageW(win32con.NULL, str(Path(icon_path)), win32con.IMAGE_ICON, 0, 0, win32con.LR_LOADFROMFILE);
             ctypes.windll.user32.SendMessageW(self.main_window._hwnd, win32con.WM_SETICON, win32con.ICON_SMALL, self.main_window._icon)
 
     def get_title(self):

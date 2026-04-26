@@ -29,7 +29,4 @@ if [ -d /custom-installation/packages ]; then
 fi
 
 #remove preseed file and menu.lst
-#rm /host/ubuntu/install/custom-installation/preseed.cfg || true
-#rm /host/ubuntu/install/boot/grub/menu.lst || true
-rm -rf /host/ubuntu/install || true
-
+rm -f  /host/ubuntu/install/boot/grub/grub.cfg || true

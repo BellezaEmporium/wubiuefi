@@ -5,8 +5,8 @@ ISO verifier for Ubuntu images.
 import os
 import hashlib
 import logging
+from pathlib import Path
 import subprocess
-import shutil
 import requests
 import gnupg
 
@@ -160,8 +160,8 @@ def verify_iso(base_url, iso_path, install_dir,
     sha_url = base_url.rstrip("/") + "/SHA256SUMS"
     gpg_url = base_url.rstrip("/") + "/SHA256SUMS.gpg"
 
-    sha_file = os.path.join(install_dir, "SHA256SUMS")
-    sig_file = os.path.join(install_dir, "SHA256SUMS.gpg")
+    sha_file = str(Path(install_dir) / "SHA256SUMS")
+    sig_file = str(Path(install_dir) / "SHA256SUMS.gpg")
 
     # -----------------------------
     # Download SHA256SUMS

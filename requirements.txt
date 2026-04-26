@@ -1,7 +1,7 @@
 # WUBI requirements
 pyinstaller
 modulegraph
-requests
+httpx
 aiotorrent
 PGPy13
 pywin32

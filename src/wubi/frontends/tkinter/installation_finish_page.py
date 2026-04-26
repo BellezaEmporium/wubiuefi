@@ -8,27 +8,28 @@ log = logging.getLogger("TkInstallationFinishPage")
 
 
 class InstallationFinishPage(Page):
+    page_title = _("Installation Complete")
+    page_subtitle = _("Your Linux installation is ready")
 
-    def on_init(self):
-        ttk.Label(self,
-                  text=_("Completing the %s Setup Wizard") % self.info.distro.name,
-                  font=("Segoe UI", 16, "bold"),
-                  bootstyle="primary").pack(anchor="w", padx=40, pady=(30, 0))
+    def on_init(self) -> None:
+        ttk.Label(
+            self.body,
+            text=_("You need to reboot your computer to start using Linux."),
+            wraplength=460,
+            justify="left",
+        ).pack(anchor="w", pady=(0, 16))
 
-        ttk.Label(self,
-                  text=_("You need to reboot to complete the installation"),
-                  wraplength=440, justify="left").pack(anchor="w", padx=40, pady=(16, 8))
+        group = ttk.Labelframe(self.body, text=_("Restart options"), padding=12)
+        group.pack(fill=X, pady=4)
 
         self._reboot_var = ttk.StringVar(value="later")
-        ttk.Radiobutton(self, text=_("Reboot now"),
-                        variable=self._reboot_var, value="now").pack(anchor="w", padx=60)
-        ttk.Radiobutton(self, text=_("I want to manually reboot later"),
-                        variable=self._reboot_var, value="later").pack(anchor="w", padx=60)
+        ttk.Radiobutton(group, text=_("Reboot now"),
+                        variable=self._reboot_var, value="now").pack(anchor="w", pady=2)
+        ttk.Radiobutton(group, text=_("I want to manually reboot later"),
+                        variable=self._reboot_var, value="later").pack(anchor="w", pady=2)
 
-        nav = ttk.Frame(self, padding=(8, 6))
-        nav.pack(side=BOTTOM, fill=X)
-        ttk.Button(nav, text=_("Finish"), command=self.on_finish,
-                   bootstyle="primary").pack(side=RIGHT, padx=8, pady=8)
+        ttk.Button(self.nav, text=_("Finish"), command=self.on_finish,
+                   bootstyle="primary").pack(side=RIGHT, padx=8, pady=4)
 
     def on_finish(self):
         if self._reboot_var.get() == "now":
