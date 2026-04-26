@@ -6,9 +6,9 @@ import logging
 
 from gettext import gettext as _
 
-from .downloader import download as http_download
-from . import btdownloader
-from .utils import join_path, copy_file
+from ..utils import btdownloader
+from ..utils.downloader import download as http_download
+from ..utils.utils import join_path, copy_file
 
 log = logging.getLogger("Backend.download_manager")
 

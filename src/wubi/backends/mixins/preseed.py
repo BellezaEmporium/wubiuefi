@@ -6,8 +6,7 @@ import shutil
 
 from gettext import gettext as _
 
-from .utils import join_path, unix_path, read_file, write_file, copy_file, replace_line_in_file
-from .utils import md5_password, hash_password
+from ..utils.utils import join_path, unix_path, read_file, write_file, copy_file, replace_line_in_file, md5_password, hash_password
 
 log = logging.getLogger("Backend.preseed")
 

@@ -8,8 +8,8 @@ import logging
 import subprocess
 from pathlib import Path
 
-from . import registry
-from .utils import join_path, write_file, run_command
+from ..utils import registry
+from ..utils.utils import join_path, write_file, run_command
 
 log = logging.getLogger("Backend.bootloader")
 

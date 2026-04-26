@@ -8,8 +8,8 @@ import tempfile
 from os.path import abspath, isfile
 from gettext import gettext as _
 
-from .iso_verifier import verify_iso
-from .utils import join_path, find_line_in_file, get_file_hash
+from ..utils.iso_verifier import verify_iso
+from ..utils.utils import join_path, find_line_in_file, get_file_hash
 
 log = logging.getLogger("Backend.iso")
 

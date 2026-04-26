@@ -7,13 +7,12 @@ import locale
 import logging
 import platform
 
-from . import registry
-from . import mappings as win32_mappings
-from .drive import Drive
-from .memory import get_total_memory_mb
-from .mappings import lang_country2linux_locale
-from .utils import join_path, run_command
-
+from ..utils import registry
+from ..data  import mappings as win32_mappings
+from ..utils.drive   import Drive
+from ..utils.memory  import get_total_memory_mb
+from ..data.mappings import lang_country2linux_locale
+from ..utils.utils   import join_path, run_command
 log = logging.getLogger("Backend.sysinfo")
 
 
@@ -113,6 +112,8 @@ class SysInfoMixin:
 
     def get_language_encoding(self) -> tuple[str, str]:
         language, encoding = locale.getdefaultlocale()
+        language = language or "en_US"
+        encoding = encoding or "utf-8"
         log.debug(f"language={language} encoding={encoding}")
         return language, encoding
 
@@ -189,7 +190,7 @@ class SysInfoMixin:
             'nt': 'xp', 'xp': 'xp', '2000': 'xp', '2003': 'xp',
             '95': '98', '98': '98',
         }
-        bl = mapping.get(windows_version)
+        bl = mapping.get(windows_version) if windows_version is not None else None
         log.debug(f"bootloader={bl}")
         return bl
 
@@ -216,7 +217,7 @@ class SysInfoMixin:
         return icountry
 
     def get_timezone(self) -> str:
-        from .mappings import country2tz, country_gmt2tz, gmt2tz
+        from ..data.mappings import country2tz, country_gmt2tz, gmt2tz
         tz = country2tz.get(self.info.country)
         tz = country_gmt2tz.get((self.info.country, self.info.gmt), tz)
         if not tz:
@@ -316,7 +317,7 @@ class SysInfoMixin:
         return folder
 
     def _get_source_id(self) -> str:
-        from .backend import SOURCE_ID_MAP
+        from ..backend import SOURCE_ID_MAP
         distro_obj  = getattr(self.info, 'distro', None)
         distro_name = (
             getattr(distro_obj, 'name', None)
@@ -349,7 +350,7 @@ class SysInfoMixin:
         return sid
 
     def get_installer_type(self) -> str:
-        from .backend import DISTRO2INSTALLER
+        from ..backend import DISTRO2INSTALLER
         distro_obj  = getattr(self.info, 'distro', None)
         distro_name = (
             getattr(distro_obj, 'name', None)

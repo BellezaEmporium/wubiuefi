@@ -4,17 +4,25 @@ import os
 import re
 import logging
 import threading
+from typing import TYPE_CHECKING
 
 import py7zr
 
-from .virtualdisk import create_virtual_disk
-from .utils import join_path, run_command, spawn_command, copy_file, rm_tree
+from ..utils.virtualdisk import create_virtual_disk
+from ..utils.utils import join_path, run_command, spawn_command, copy_file, rm_tree
+from ..utils import registry
 from wubi import errors
+
+if TYPE_CHECKING:
+    from typing import Any
 
 log = logging.getLogger("Backend.disks")
 
 
 class DiskMixin:
+
+    if TYPE_CHECKING:
+        info: Any
 
     # ── Directory structure ───────────────────────────────────────
 
@@ -95,7 +103,7 @@ class DiskMixin:
 
     def create_uninstaller(self, associated_task=None) -> None:
         import shutil
-        from . import registry
+        from ..utils import registry
         name = f'uninstall-{self.info.application_name}.exe'.replace(' ', '_').replace('__', '_')
         path = join_path(self.info.target_dir, name)
         if os.path.splitext(self.info.original_exe)[-1] == '.exe':
@@ -116,7 +124,7 @@ class DiskMixin:
     def copy_installation_files(self, associated_task=None) -> None:
         import shutil
         from gettext import gettext as _
-        from .utils import replace_line_in_file
+        from ..utils.utils import replace_line_in_file
         from os.path import isdir
 
         self.info.custom_install = join_path(self.info.install_dir, 'custom-installation')
@@ -137,7 +145,7 @@ class DiskMixin:
             f"Note that in verbose mode, the logs may include the password.\n\n"
             f"The system will now reboot."
         )
-        replace_line_in_file(failure_hook, 'msg=', f'msg="{str(msg.encode(\"utf8\"))}"')
+        replace_line_in_file(failure_hook, 'msg=', f'msg="{str(msg.encode("utf8"))}"')
 
         src  = join_path(self.info.image_dir, self.info.distro.name + '.ico')
         dest = self.info.icon
@@ -280,5 +288,5 @@ class DiskMixin:
                 raise errors.WubiCorruptionError
 
     def remove_registry_key(self, associated_task=None) -> None:
-        from . import registry
+        from ..utils import registry
         registry.delete_key('HKEY_LOCAL_MACHINE', self.info.registry_key)
