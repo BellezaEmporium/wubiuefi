@@ -26,7 +26,7 @@ all: build check
 build: wubi
 
 wubi: wubi-pre-build
-	$(PYTHON_WIN) nuitka_build.py
+	$(PYTHON_WIN) tools/nuitka_build.py
 
 wubi-pre-build: check_winboot winboot translations
 	$(PYTHON_WIN) -m pip install -r requirements.txt
