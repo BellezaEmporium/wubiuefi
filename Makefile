@@ -26,14 +26,13 @@ all: build check
 build: wubi
 
 wubi: wubi-pre-build
-	$(PYTHON_WIN) -m PyInstaller --noconfirm wubi.spec
-	mv dist/${PACKAGE}.exe build/${PACKAGE}.exe
+	$(PYTHON_WIN) nuitka_build.py
 
-wubi-pre-build: check_winboot winboot src/main.py src/wubi/*.py version.py translations
+wubi-pre-build: check_winboot winboot translations
 	$(PYTHON_WIN) -m pip install -r requirements.txt
-	rm -rf build/wubi
-	rm -rf build/bin
+	rm -rf build/wubi build/bin
 	cp -a blobs build/bin
+	$(MAKE) version.py
 
 winboot: check_winboot
 	@echo "Verifying EFI binaries..."
@@ -85,9 +84,9 @@ translations: po/*.po
 	done
 
 version.py:
-	sh -c 'echo "version = \"$(VERSION)\"" > build/version.py'
-	sh -c 'echo "revision = $(REVISION)" >> build/version.py'
-	sh -c 'echo "application_name = \"$(PACKAGE)\"" >> build/version.py'
+	sh -c 'echo "version = \"$(VERSION)\"" > src/version.py'
+	sh -c 'echo "revision = $(REVISION)" >> src/version.py'
+	sh -c 'echo "application_name = \"$(PACKAGE)\"" >> src/version.py'
 
 runbin: wubi
 	rm -rf build/test
@@ -107,8 +106,8 @@ runpy:
 	sh -c 'PYTHONPATH=src src/main.py --test'
 
 clean:
-	rm -rf dist/*
-	rm -rf build/*
+	rm -rf dist/* build/*
+	rm -f src/version.py
 
 distclean: clean
 	rm -rf wine

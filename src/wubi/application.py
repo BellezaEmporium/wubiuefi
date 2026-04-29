@@ -9,7 +9,7 @@ import traceback
 from gettext import gettext as _
 
 from wubi import errors
-from wubi.backends.utils import run_command
+from wubi.backends.utils.utils import run_command
 from wubi.errors import QuitException
 from wubi.info import Info
 from wubi.cli import parse_args
@@ -30,14 +30,14 @@ class Wubi:
     ) -> None:
         self.frontend = None
         self.backend  = None
-        self.info = Info(
-            root_dir               = root_dir,
-            application_name       = application_name,
-            version                = version,
-            revision               = revision,
-            version_revision       = f"{version}-rev{revision}",
-            full_application_name  = f"{application_name}-{version}-rev{revision}",
-            full_version           = f"{application_name} {version} rev{revision}",
+        self.info = Info(                                    # ← keyword args now valid
+            root_dir              = root_dir,
+            application_name      = application_name,
+            version               = version,
+            revision              = revision,
+            version_revision      = f"{version}-rev{revision}",
+            full_application_name = f"{application_name}-{version}-rev{revision}",
+            full_version          = f"{application_name} {version} rev{revision}",
         )
 
     # ── Entry point ───────────────────────────────────────────────
@@ -130,7 +130,7 @@ class Wubi:
     def _run_uninstaller(self) -> None:
         log.info("Running the uninstaller…")
         if not self.info.previous_target_dir or \
-           not os.path.isdir(self.info.previous_target_dir):
+                not os.path.isdir(self.info.previous_target_dir):
             log.error("No previous target dir found — aborting")
             return
         if self.backend and self.backend.run_previous_uninstaller():
@@ -216,7 +216,7 @@ class Wubi:
                 self.frontend.quit()
             except Exception:
                 pass
-        self.frontend = None
+            self.frontend = None
 
     def on_quit(self) -> None:
         log.debug("application.on_quit")

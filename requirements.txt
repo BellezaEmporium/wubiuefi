@@ -1,6 +1,5 @@
 # WUBI requirements
-pyinstaller
-modulegraph
+nuitka
 httpx
 aiotorrent
 PGPy13

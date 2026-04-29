@@ -13,10 +13,13 @@ from ..utils.drive   import Drive
 from ..utils.memory  import get_total_memory_mb
 from ..data.mappings import lang_country2linux_locale
 from ..utils.utils   import join_path, run_command
+
+from .protocols import BackendProtocol
+
 log = logging.getLogger("Backend.sysinfo")
 
 
-class SysInfoMixin:
+class SysInfoMixin(BackendProtocol):
 
     # ── High-level fetchers ───────────────────────────────────────
 
@@ -29,7 +32,7 @@ class SysInfoMixin:
         self.info.os_name       = self.get_osname()
         if not self.info.language:
             self.info.language, self.info.encoding = self.get_language_encoding()
-        self.info.environment_variables = os.environ
+        self.info.environment_variables = dict(os.environ)
         self.info.arch = self.get_arch()
         if self.info.force_i386:
             self.info.arch = "i386"

@@ -8,3 +8,4 @@ data/custom-installation/packages
 shim
 .venv
 dist/*
+src/version.py

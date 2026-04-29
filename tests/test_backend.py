@@ -3,7 +3,9 @@ import os
 import tempfile
 import shutil
 from unittest import mock
-from wubi.backends import backend, registry
+from wubi.backends import backend
+from wubi.backends.utils import registry
+from wubi.backends.utils.utils import unix_path
 from version import application_name, version, revision
 from wubi import application
 
@@ -12,8 +14,7 @@ class BackendTests(unittest.TestCase):
 
     def setUp(self):
         root_dir = os.getcwd()
-        self.app = application.Wubi(application_name, version, revision, root_dir)
-        self.app.parse_commandline_arguments()
+        self.app = application.Wubi(application_name, version, str(revision), root_dir)
         self.back = backend.Backend(self.app)
         self.back.info.iso_extractor = os.path.join(root_dir, 'build', 'bin', '7z.exe')
         self.app.info.original_exe = os.path.join(root_dir, 'build', 'wubi.exe')
@@ -204,7 +205,7 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(early[0], '/bin/sh')
         self.assertTrue(early[1].startswith('/host/'))
         self.assertNotIn('$(', early[1])
-        self.assertEqual(early[2], backend.unix_path(self.temp_target_dir))
+        self.assertEqual(early[2], unix_path(self.temp_target_dir))
 
     def test_modify_grub_configuration_subiquity_uses_isodevice_seed(self):
         mock_distro = mock.Mock()

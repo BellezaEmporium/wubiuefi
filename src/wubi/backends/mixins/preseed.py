@@ -8,10 +8,12 @@ from gettext import gettext as _
 
 from ..utils.utils import join_path, unix_path, read_file, write_file, copy_file, replace_line_in_file, md5_password, hash_password
 
+from .protocols import BackendProtocol
+
 log = logging.getLogger("Backend.preseed")
 
 
-class PreseedMixin:
+class PreseedMixin(BackendProtocol):
 
     def create_preseed(self, associated_task=None) -> None:
         installer = getattr(self.info.distro, 'installer', None)
@@ -38,6 +40,7 @@ class PreseedMixin:
         autoinstall_base = self.info.custom_install or self.info.install_dir
         if not autoinstall_base:
             raise Exception("Could not determine target directory for autoinstall")
+        password = self.info.password or ""
 
         dic = dict(
             locale                  = self.info.locale,
@@ -47,7 +50,7 @@ class PreseedMixin:
             realname                = self.info.user_full_name or username,
             hostname                = hostname,
             username                = username,
-            hashed_password         = hash_password(self.info.password),
+            hashed_password         = hash_password(password),
             source_id               = self._get_source_id(),
             custom_installation_dir = unix_path(autoinstall_base),
         )

@@ -10,11 +10,13 @@ from ..utils import btdownloader
 from ..utils.downloader import download as http_download
 from ..utils.utils import join_path, copy_file
 
+from .protocols import BackendProtocol
+
 log = logging.getLogger("Backend.download_manager")
 
 
-class DownloadMixin:
-
+class DownloadMixin(BackendProtocol):
+    
     # ── ISO ───────────────────────────────────────────────────────
 
     def get_iso(self, associated_task=None) -> bool:

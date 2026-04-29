@@ -10,11 +10,12 @@ from pathlib import Path
 
 from ..utils import registry
 from ..utils.utils import join_path, write_file, run_command
+from .protocols import BackendProtocol
 
 log = logging.getLogger("Backend.bootloader")
 
 
-class BootloaderMixin:
+class BootloaderMixin(BackendProtocol):
 
     # ── Detection ─────────────────────────────────────────────────
 
@@ -60,14 +61,14 @@ class BootloaderMixin:
                 associated_task.add_subtask(make_bcd_task(drive))
 
     def modify_bcd(self, drive, associated_task=None) -> None:
-        if getattr(self, '_is_already_configured', False):
+        if getattr(self, '_bcd_already_configured', False):
             log.info(f"BCD already configured — skipping duplicate call ({drive.path})")
             return
 
         bcdedit = self._find_bcdedit()
         if registry.get_value('HKEY_LOCAL_MACHINE', self.info.registry_key, 'VistaBootDrive'):
             log.debug("BCD already modified (registry check).")
-            self._is_already_configured = True
+            self._bcd_already_configured = True
             return
 
         if self.info.efi:
@@ -82,7 +83,7 @@ class BootloaderMixin:
                 "Legacy BIOS boot is not supported — Ubuntu dropped it in recent releases."
             )
 
-        self._is_already_configured = True
+        self._bcd_already_configured = True
 
     def modify_EFI_folder(self, associated_task, bcdedit) -> str:
         esp_drive, need_unmount = self._get_or_mount_esp()

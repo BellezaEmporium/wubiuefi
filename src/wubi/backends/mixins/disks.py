@@ -13,13 +13,15 @@ from ..utils.utils import join_path, run_command, spawn_command, copy_file, rm_t
 from ..utils import registry
 from wubi import errors
 
+from .protocols import BackendProtocol
+
 if TYPE_CHECKING:
     from typing import Any
 
 log = logging.getLogger("Backend.disks")
 
 
-class DiskMixin:
+class DiskMixin(BackendProtocol):
 
     if TYPE_CHECKING:
         info: Any

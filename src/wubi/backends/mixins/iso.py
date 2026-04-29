@@ -11,10 +11,12 @@ from gettext import gettext as _
 from ..utils.iso_verifier import verify_iso
 from ..utils.utils import join_path, find_line_in_file, get_file_hash
 
+from .protocols import BackendProtocol
+
 log = logging.getLogger("Backend.iso")
 
 
-class IsoMixin:
+class IsoMixin(BackendProtocol):
 
     # ── Search ────────────────────────────────────────────────────
 
